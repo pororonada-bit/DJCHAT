@@ -88,6 +88,13 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--accent)}
 .bubble a{display:block}
 .bubble img{display:block;max-width:min(240px,60vw);max-height:320px;border-radius:12px;object-fit:cover;background:var(--chip)}
 .bubble .cap{padding:5px 9px 3px}
+.check{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--muted);margin-top:10px}
+.check input{width:18px;height:18px;accent-color:var(--accent)}
+.pub{font-size:12px;font-weight:700;color:var(--accent);border:1px solid var(--accent);border-radius:999px;padding:0 7px}
+.publist{list-style:none;margin:0;padding:0}
+.publist li{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)}
+.publist li:last-child{border-bottom:0}
+.publist .fn{flex:1}
 /* 게시판 */
 .posts{list-style:none;margin:0;padding:0;background:var(--surface);border-radius:12px;border:1px solid var(--line);overflow:hidden}
 .posts li+li{border-top:1px solid var(--line)}
@@ -469,7 +476,8 @@ function viewPost(main,id){
 /* ---------- 채팅 ---------- */
 async function loadRooms(){
   try{
-    const rows=must(await sb.from("rooms").select("id,name,is_dm,last_text,last_by,last_at,created_at"));
+    const mine=must(await sb.from("room_members").select("room_id").eq("user_id",S.uid)).map(r=>r.room_id);
+    const rows=mine.length?must(await sb.from("rooms").select("id,name,is_dm,is_public,last_text,last_by,last_at,created_at").in("id",mine)):[];
     const dmIds=rows.filter(r=>r.is_dm).map(r=>r.id);
     if(dmIds.length){
       const mem=must(await sb.from("room_members").select("room_id,user_id").in("room_id",dmIds).neq("user_id",S.uid));
@@ -492,8 +500,23 @@ async function loadRooms(){
       }
     }
     S.rooms=next;S.roomsFirst=false;S.roomsLoaded=true;
-    updateRoomList();updateRoomHead();updateBadges();
+    updateRoomList();updateRoomHead();updateBadges();loadPublic();
   }catch(e){console.warn(e);}
+}
+async function loadPublic(){
+  const ul=$("#publist");if(!ul)return;
+  try{
+    const rows=must(await sb.rpc("list_public_rooms"));
+    if(!$("#publist"))return;
+    if(!rows.length){ul.replaceChildren(h("li",{class:"empty",style:"padding:12px 0"},"아직 공개방이 없어요. 새 방을 만들 때 공개방으로 체크해 보세요."));return;}
+    ul.replaceChildren(...rows.map(r=>h("li",{},
+      h("span",{class:"fn"},r.name),
+      h("span",{class:"tm"},r.member_count+"명"),
+      h("button",{class:r.joined?"btn":"btn primary",onclick:async()=>{
+        try{if(!r.joined){const c=must(await sb.rpc("join_room",{p_code:r.id}));if(!c){toast("없어진 방이에요");loadPublic();return;}await loadRooms();}go("chat",{name:"room",code:r.id});}
+        catch(e){handleErr(e);}
+      }},r.joined?"열기":"입장"))));
+  }catch(e){console.warn(e);ul.replaceChildren(h("li",{class:"empty",style:"padding:12px 0"},"공개방 기능 설정이 필요해요. add-public-rooms.sql을 실행해 주세요."));}
 }
 async function fillNamesFor(ids){const need=ids.filter(i=>!(i in S.names));if(!need.length)return;try{const {data}=await sb.from("profiles").select("id,name").in("id",need);for(const p of data||[])S.names[p.id]=p.name;}catch(e){}}
 
@@ -514,10 +537,11 @@ function viewChatList(main){
 
   const name=h("input",{type:"text",placeholder:"새 방 이름",maxlength:"40"});
   const mk=h("button",{class:"btn primary"},"방 만들기");
+  const pubChk=h("input",{type:"checkbox"});
   const doMake=async()=>{
     const n=name.value.trim();if(!n){toast("방 이름을 입력해 주세요");name.focus();return;}
     mk.disabled=true;
-    try{const c=must(await sb.rpc("create_room",{p_name:n.slice(0,40)}));name.value="";await loadRooms();go("chat",{name:"room",code:c});toast("방을 만들었어요. 입장 코드는 "+c);}
+    try{const c=must(await sb.rpc("create_room",{p_name:n.slice(0,40),p_public:pubChk.checked}));name.value="";pubChk.checked=false;await loadRooms();go("chat",{name:"room",code:c});toast("방을 만들었어요. 입장 코드는 "+c);}
     catch(e){handleErr(e);}mk.disabled=false;
   };
   mk.addEventListener("click",doMake);
@@ -525,9 +549,12 @@ function viewChatList(main){
 
   main.append(h("div",{class:"head"},h("h1",{text:"채팅"})),
     h("div",{class:"panel"},h("h2",{},"코드로 입장"),h("div",{class:"row"},codeIn,join)),
-    h("div",{class:"panel"},h("h2",{},"새 채팅방"),h("div",{class:"row"},name,mk)),
+    h("div",{class:"panel"},h("h2",{},"새 채팅방"),h("div",{class:"row"},name,mk),
+      h("label",{class:"check"},pubChk,"공개방으로 만들기 (코드 없이 누구나 목록에서 입장)")),
+    h("div",{class:"panel"},h("h2",{},"공개방"),h("ul",{class:"publist",id:"publist"},h("li",{class:"empty",style:"padding:12px 0"},"불러오는 중…"))),
+    h("h2",{style:"margin:18px 0 0"},"내 채팅방"),
     h("ul",{class:"rooms",id:"roomlist"}));
-  updateRoomList();
+  updateRoomList();loadPublic();
 }
 function roomNameNode(c){const r=S.rooms[c];if(r&&r.is_dm)return nameSpan(S.dmOther[c]);return document.createTextNode((r&&r.name)||"채팅방");}
 function updateRoomList(){
@@ -601,6 +628,7 @@ function updateRoomHead(){
   head.replaceChildren(
     h("button",{class:"link",onclick:()=>go("chat")},"목록"),
     h("span",{class:"rn"},roomNameNode(c)),
+    r&&r.is_public?h("span",{class:"pub"},"공개"):null,
     r&&!r.is_dm?h("button",{class:"code",title:"입장 코드 복사",onclick:()=>copy(c)},c):null,
     r&&!r.is_dm&&S.cur.memberCount?h("span",{class:"tm"},S.cur.memberCount+"명"):null,
     leave);
