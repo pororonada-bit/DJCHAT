@@ -165,6 +165,28 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--accent)}
 .ptr span{width:36px;height:36px;border-radius:50%;background:var(--surface);color:var(--accent);border:1px solid var(--line);display:grid;place-items:center;font-size:20px;box-shadow:0 4px 14px rgba(0,0,0,.15)}
 .ptr.ready span{background:var(--accent);color:var(--accent-ink)}
 @media (prefers-reduced-motion:reduce){#refresh.spin{animation:none}}
+.sorts{display:flex;gap:6px;margin:0 0 10px}
+.sorts button{border:1px solid var(--line);background:var(--surface);color:var(--muted);border-radius:999px;padding:5px 12px;font-size:14px}
+.sorts button[aria-pressed="true"]{background:var(--chip);color:var(--accent);border-color:var(--accent);font-weight:500}
+.cnt{color:var(--accent);font-weight:500}
+.c-sticker{width:100px;height:100px;object-fit:contain;display:block;margin-top:4px}
+.c-tools{display:flex;gap:8px;align-items:flex-start}
+.c-tools textarea{flex:1}
+.c-emo{margin-top:8px;border:1px solid var(--line);border-radius:12px}
+.crown{margin-right:3px}
+.notice{display:flex;gap:8px;align-items:flex-start;padding:9px 12px;background:var(--chip);border-bottom:1px solid var(--line);font-size:14px}
+.notice .nt{flex:1;white-space:pre-wrap;word-break:break-word;max-height:4.8em;overflow:hidden}
+.notice.open .nt{max-height:none}
+.notice .nb{font-weight:700;color:var(--accent);flex:none}
+.members{border-bottom:1px solid var(--line);background:var(--surface);padding:10px 12px;max-height:55%;overflow-y:auto}
+.members h3{font-size:14px;color:var(--muted);font-weight:500;margin:10px 0 6px}
+.members h3:first-child{margin-top:0}
+.mlist{list-style:none;margin:0;padding:0}
+.mlist li{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.mlist li:last-child{border-bottom:0}
+.mlist .fn{flex:1;min-width:120px}
+.mlist .btn{padding:5px 10px;font-size:13px}
+.mgr textarea{width:100%;min-height:70px;resize:vertical;margin-bottom:8px}
 /* 게시판 */
 .posts{list-style:none;margin:0;padding:0;background:var(--surface);border-radius:12px;border:1px solid var(--line);overflow:hidden}
 .posts li+li{border-top:1px solid var(--line)}
@@ -290,6 +312,11 @@ function handleErr(e){
   else if(/BANNED/.test(m))toast("관리자에 의해 활동이 제한된 계정이에요.");
   else if(/NOT_ADMIN/.test(m))toast("관리자만 할 수 있어요.");
   else if(/CANNOT_BAN_ADMIN/.test(m))toast("관리자는 차단할 수 없어요.");
+  else if(/NOT_ROOM_OWNER/.test(m))toast("방장만 할 수 있어요.");
+  else if(/ROOM_BANNED/.test(m))toast("이 방에서 내보내져서 들어갈 수 없어요.");
+  else if(/CANNOT_KICK_OWNER/.test(m))toast("방장은 내보낼 수 없어요.");
+  else if(/NOT_MEMBER/.test(m))toast("이 방에 있는 사람만 방장이 될 수 있어요.");
+  else if(/room_set_notice|room_kick|room_set_owner|can_manage_room|comments_sticker|column .*sticker_url/i.test(m))toast("새 기능 설정이 필요해요. add-room-owner.sql을 실행해 주세요.");
   else if(m==="STICKER_BIG")toast("움직이는 이모티콘(GIF)은 2MB 이하만 올릴 수 있어요.");
   else if(/emoticons|sticker_url|sticker_check/i.test(m))toast("이모티콘 설정이 필요해요. add-emoticons.sql을 실행해 주세요.");
   else if(m==="NOT_IMAGE")toast("이 파일은 사진으로 올릴 수 없어요.");
@@ -351,6 +378,52 @@ async function uploadSticker(file){
   must(await sb.storage.from("photos").upload(path,blob,{contentType:blob.type||"image/png",cacheControl:"31536000"}));
   return sb.storage.from("photos").getPublicUrl(path).data.publicUrl;
 }
+/* 이모티콘 고르기 창 (채팅과 댓글에서 같이 써요) */
+function makeEmoPanel(panel,onPick){
+  let emos=[],emoEdit=false,pending=null;
+  const drawEmo=()=>{
+    const editBtn=h("button",{class:"link"},emoEdit?"완료":"내 이모티콘 지우기");
+    editBtn.addEventListener("click",()=>{emoEdit=!emoEdit;drawEmo();});
+    const parts=[h("div",{class:"emo-head"},h("span",{},"이모티콘 "+emos.length+"개"),(S.admin||emos.some(e=>e.owner===S.uid))?editBtn:h("span"))];
+    if(pending){
+      const nm=h("input",{type:"text",value:pending.name,maxlength:"20",placeholder:"이모티콘 이름"});
+      const ok=h("button",{class:"btn primary"},"저장");
+      const no=h("button",{class:"btn"},"취소");
+      ok.addEventListener("click",async()=>{
+        const n=nm.value.trim().slice(0,20);if(!n){toast("이름을 입력해 주세요");return;}
+        ok.disabled=true;
+        try{must(await sb.from("emoticons").insert({name:n,image_url:pending.url}));pending=null;toast("이모티콘을 추가했어요");await loadEmo();}
+        catch(err){handleErr(err);ok.disabled=false;}
+      });
+      no.addEventListener("click",()=>{pending=null;drawEmo();});
+      parts.push(h("div",{class:"emo-new"},h("img",{src:pending.url,alt:""}),nm,ok,no));
+    }
+    const add=h("button",{class:"emo add",title:"이모티콘 추가","aria-label":"이모티콘 추가"},"+");
+    add.addEventListener("click",async()=>{
+      const [f]=await pickFiles(false);if(!f)return;
+      add.disabled=true;add.textContent="⏳";
+      try{const url=await uploadSticker(f);pending={url,name:(f.name||"").replace(/[.][^.]+$/,"").slice(0,20)||"이모티콘"};drawEmo();}
+      catch(err){handleErr(err);add.disabled=false;add.textContent="+";}
+    });
+    const tiles=emos.map(e=>{
+      const t=h("button",{class:"emo",title:e.name,"aria-label":e.name},h("img",{src:e.image_url,alt:e.name,loading:"lazy"}));
+      if(emoEdit&&(e.owner===S.uid||S.admin)){
+        t.append(h("span",{class:"x","aria-hidden":"true"},"×"));
+        t.addEventListener("click",async()=>{try{must(await sb.from("emoticons").delete().eq("id",e.id));toast("이모티콘을 지웠어요");await loadEmo();}catch(err){handleErr(err);}});
+      }else t.addEventListener("click",()=>onPick(e));
+      return t;
+    });
+    parts.push(h("div",{class:"emo-grid"},add,tiles));
+    if(!emos.length&&!pending)parts.push(h("p",{class:"hint"},"+를 눌러 갖고 있는 그림을 이모티콘으로 추가해 보세요. 추가한 이모티콘은 다정챗 친구 모두가 함께 쓸 수 있어요."));
+    panel.replaceChildren(...parts);
+  };
+  const loadEmo=async()=>{
+    try{emos=must(await sb.from("emoticons").select("id,owner,name,image_url").order("created_at",{ascending:true}).limit(300));}
+    catch(err){handleErr(err);}
+    drawEmo();
+  };
+  return {open:()=>{panel.replaceChildren(h("p",{class:"hint",style:"margin:0"},"불러오는 중…"));loadEmo();}};
+}
 function photoLink(url,onload){const img=h("img",{src:url,alt:"사진",loading:"lazy"});if(onload)img.addEventListener("load",onload);return h("a",{href:url,target:"_blank",rel:"noopener"},img);}
 function twoStep(btn,label,armedLabel,action){
   let armed=false;
@@ -404,17 +477,27 @@ async function syncPush(){
 
 /* 이름 표시 */
 const pendingNames=new Set();
-function nameSpan(uid){return h("span",{"data-uid":uid||""},S.names[uid]||"…");}
+S.badge=S.badge||{};
+function badgeEl(uid){return S.badge&&S.badge[uid]?h("span",{class:"admin-tag",title:"관리자"},"관리자"):null;}
+function nameSpan(uid){return h("span",{"data-uid":uid||""},S.names[uid]||"…",badgeEl(uid));}
+function paintNames(){
+  for(const e of document.querySelectorAll("[data-uid]")){const id=e.dataset.uid;if(id&&S.names[id])e.replaceChildren(S.names[id],...[badgeEl(id)].filter(Boolean));}
+  for(const e of document.querySelectorAll("[data-initial]")){const id=e.dataset.initial;if(S.names[id])e.textContent=S.names[id].slice(0,1);}
+}
+async function fetchProfiles(ids){
+  let res=await sb.from("profiles").select("id,name,admin_badge").in("id",ids);
+  if(res.error)res=await sb.from("profiles").select("id,name").in("id",ids);
+  for(const p of res.data||[]){S.names[p.id]=p.name;S.badge[p.id]=!!p.admin_badge;}
+}
 async function fillNames(){
   const ids=[...new Set([...document.querySelectorAll("[data-uid],[data-initial]")].map(e=>e.dataset.uid||e.dataset.initial).filter(Boolean))];
   const need=ids.filter(id=>!(id in S.names)&&!pendingNames.has(id));
   if(need.length){
     need.forEach(i=>pendingNames.add(i));
-    try{const {data}=await sb.from("profiles").select("id,name").in("id",need);for(const p of data||[])S.names[p.id]=p.name;}catch(e){}
+    try{await fetchProfiles(need);}catch(e){}
     need.forEach(i=>{if(!S.names[i])S.names[i]="알 수 없음";pendingNames.delete(i);});
   }
-  for(const e of document.querySelectorAll("[data-uid]")){const id=e.dataset.uid;if(id&&S.names[id])e.textContent=S.names[id];}
-  for(const e of document.querySelectorAll("[data-initial]")){const id=e.dataset.initial;if(S.names[id])e.textContent=S.names[id].slice(0,1);}
+  paintNames();
 }
 
 /* ---------- 읽음/배지 ---------- */
@@ -599,25 +682,42 @@ function viewLogin(){
 /* ---------- 게시판 ---------- */
 async function loadPosts(){
   try{
-    const data=must(await sb.from("posts").select("id,title,author,created_at,images").order("created_at",{ascending:false}).limit(200));
+    let res=await sb.from("posts").select("id,title,author,created_at,images,likes(count),comments(count)").order("created_at",{ascending:false}).limit(200);
+    if(res.error){console.warn(res.error);res=await sb.from("posts").select("id,title,author,created_at,images").order("created_at",{ascending:false}).limit(200);}
+    const data=must(res);
+    for(const p of data){p.likeN=(p.likes&&p.likes[0]&&p.likes[0].count)||0;p.cmtN=(p.comments&&p.comments[0]&&p.comments[0].count)||0;}
     S.posts=data;S.postsLoaded=true;
     if(S.seenPosts){for(const p of data){if(!S.seenPosts.has(p.id)&&p.author!==S.uid){beep();toast("새 글: "+p.title);sysNotify("다정챗 새 글",p.title);break;}}}
     S.seenPosts=new Set(data.map(p=>p.id));
     updatePostList();
   }catch(e){console.warn(e);}
 }
+function boardSort(){try{return localStorage.getItem("boardSort")||"new";}catch(e){return "new";}}
 function viewBoard(main){
+  const sorts=h("div",{class:"sorts",role:"group","aria-label":"정렬"});
+  const drawSorts=()=>{
+    const cur=boardSort();
+    sorts.replaceChildren(...[["new","최신순"],["likes","추천순"],["comments","댓글순"]].map(([k,l])=>
+      h("button",{"aria-pressed":String(cur===k),onclick:()=>{try{localStorage.setItem("boardSort",k);}catch(e){}drawSorts();updatePostList();}},l)));
+  };
+  drawSorts();
   main.append(h("div",{class:"head"},h("h1",{text:"게시판"}),h("button",{class:"btn primary",onclick:()=>go("board",{name:"write"})},"글쓰기")),
-    h("ul",{class:"posts",id:"postlist"}));
+    sorts,h("ul",{class:"posts",id:"postlist"}));
   updatePostList();
 }
 function updatePostList(){
   const ul=$("#postlist");if(!ul)return;ul.replaceChildren();
   if(!S.postsLoaded){ul.append(h("li",{class:"empty"},"불러오는 중…"));return;}
   if(!S.posts.length){ul.append(h("li",{class:"empty"},"아직 글이 없어요. 첫 글을 써 보세요."));return;}
-  for(const p of S.posts){
+  const mode=boardSort();
+  const list=[...S.posts];
+  const t=p=>ms(p.created_at);
+  if(mode==="likes")list.sort((a,b)=>(b.likeN||0)-(a.likeN||0)||t(b)-t(a));
+  else if(mode==="comments")list.sort((a,b)=>(b.cmtN||0)-(a.cmtN||0)||t(b)-t(a));
+  for(const p of list){
     ul.append(h("li",{},h("button",{class:"post-row",onclick:()=>go("board",{name:"post",id:p.id})},
-      h("span",{class:"pt"},(p.images&&p.images.length?"📷 ":"")+p.title),h("span",{class:"pm"},nameSpan(p.author),h("span",{},fmt(p.created_at))))));
+      h("span",{class:"pt"},(p.images&&p.images.length?"📷 ":"")+p.title,p.cmtN?h("span",{class:"cnt"}," ["+p.cmtN+"]"):null),
+      h("span",{class:"pm"},nameSpan(p.author),h("span",{},fmt(p.created_at)),h("span",{},"추천 "+(p.likeN||0)),h("span",{},"댓글 "+(p.cmtN||0))))));
   }
   fillNames();
 }
@@ -658,8 +758,15 @@ function viewPost(main,id){
   const cList=h("ul");const cCount=h("h2",{},"댓글");
   const cInput=h("textarea",{rows:"2",placeholder:"댓글을 입력하세요",maxlength:"1000"});
   const cBtn=h("button",{class:"btn primary"},"등록");
+  const cEmoBtn=h("button",{class:"attach",title:"이모티콘","aria-label":"이모티콘 댓글"},"😊");
+  const cEmoPanel=h("div",{class:"emo-panel c-emo",style:"display:none"});
+  const cEmo=makeEmoPanel(cEmoPanel,async e=>{
+    try{must(await sb.from("comments").insert({post_id:id,text:"(이모티콘)",sticker_url:e.image_url}));cEmoPanel.style.display="none";loadComments();}
+    catch(err){handleErr(err);}
+  });
+  cEmoBtn.addEventListener("click",()=>{const open=cEmoPanel.style.display==="none";cEmoPanel.style.display=open?"":"none";if(open)cEmo.open();});
   main.append(h("button",{class:"link",style:"margin-bottom:10px",onclick:()=>go("board")},"목록으로"),art,
-    h("section",{class:"comments"},cCount,cList,h("div",{class:"row"},cInput,cBtn)));
+    h("section",{class:"comments"},cCount,cList,h("div",{class:"c-tools"},cEmoBtn,cInput,cBtn),cEmoPanel));
 
   let post,likes=[];
   const draw=()=>{
@@ -687,7 +794,7 @@ function viewPost(main,id){
       cList.replaceChildren(...cs.map(c=>h("li",{},
         h("div",{class:"c-meta"},nameSpan(c.author),h("span",{},fmt(c.created_at)),
           (c.author===S.uid||S.admin)?h("button",{class:"link",onclick:async()=>{try{must(await sb.from("comments").delete().eq("id",c.id));loadComments();}catch(e){handleErr(e);}}},"삭제"):null),
-        h("div",{class:"c-text"},c.text))));
+        c.sticker_url?h("img",{class:"c-sticker",src:c.sticker_url,alt:"이모티콘",loading:"lazy"}):h("div",{class:"c-text"},c.text))));
       fillNames();
     }catch(e){console.warn(e);}
   };
@@ -733,6 +840,10 @@ async function loadRooms(){
           toast(t+": "+b);sysNotify(t,b);
         }
       }
+    }
+    if(!S.roomsFirst){
+      for(const r of rows){const prev=S.rooms[r.id];if(prev&&r.notice&&r.notice!==prev.notice&&r.owner!==S.uid&&!isMuted(r.id))toast("📢 "+(r.name||"채팅방")+" 새 공지: "+r.notice.slice(0,40));}
+      if(S.tab==="chat"&&S.view.name==="room"&&S.rooms[S.view.code]&&!next[S.view.code]){toast("이 방에서 나가게 됐어요");setTimeout(()=>go("chat"),0);}
     }
     S.rooms=next;S.roomsFirst=false;S.roomsLoaded=true;
     updateRoomList();updateRoomHead();updateBadges();loadPublic();
@@ -796,7 +907,7 @@ function viewAdmin(main){
     h("div",{class:"panel"},h("h2",{},"채팅방 (1:1 채팅 제외)"),rl));
   loadUsers();loadAllRooms();
 }
-async function fillNamesFor(ids){const need=ids.filter(i=>!(i in S.names));if(!need.length)return;try{const {data}=await sb.from("profiles").select("id,name").in("id",need);for(const p of data||[])S.names[p.id]=p.name;}catch(e){}}
+async function fillNamesFor(ids){const need=ids.filter(i=>!(i in S.names));if(!need.length)return;try{await fetchProfiles(need);}catch(e){}}
 
 function viewChatList(main){
   const codeIn=h("input",{type:"text",placeholder:"입장 코드 6자리",maxlength:"6",autocapitalize:"characters",style:"text-transform:uppercase;letter-spacing:.1em"});
@@ -853,6 +964,9 @@ function updateRoomList(){
 function viewRoom(main,code){
   markRead(code);updateBadges();
   const head=h("div",{class:"room-head",id:"roomhead"});
+  const noticeBox=h("div",{id:"roomnotice"});
+  const memberBox=h("div",{class:"members",id:"roommembers",style:"display:none"});
+  S.cur.members=[];
   const list=h("div",{class:"msgs",id:"msgs"},h("p",{class:"empty"},"불러오는 중…"));
   const input=h("textarea",{rows:"1",placeholder:"메시지 입력 (Shift+Enter 줄바꿈)",maxlength:"2000"});
   const sendBtn=h("button",{class:"btn primary"},"전송");
@@ -879,58 +993,17 @@ function viewRoom(main,code){
     photoBtn.disabled=false;photoBtn.textContent="📷";
   });
   // 이모티콘
-  let emos=[],emoEdit=false,pending=null;
   const sendSticker=async e=>{
     try{const row=must(await sb.from("messages").insert({room_id:code,text:"(이모티콘)",sticker_url:e.image_url}).select("*").single());addMsgs([row]);}
     catch(err){handleErr(err);}
   };
-  const drawEmo=()=>{
-    const editBtn=h("button",{class:"link"},emoEdit?"완료":"내 이모티콘 지우기");
-    editBtn.addEventListener("click",()=>{emoEdit=!emoEdit;drawEmo();});
-    const parts=[h("div",{class:"emo-head"},h("span",{},"이모티콘 "+emos.length+"개"),(S.admin||emos.some(e=>e.owner===S.uid))?editBtn:h("span"))];
-    if(pending){
-      const nm=h("input",{type:"text",value:pending.name,maxlength:"20",placeholder:"이모티콘 이름"});
-      const ok=h("button",{class:"btn primary"},"저장");
-      const no=h("button",{class:"btn"},"취소");
-      ok.addEventListener("click",async()=>{
-        const n=nm.value.trim().slice(0,20);if(!n){toast("이름을 입력해 주세요");return;}
-        ok.disabled=true;
-        try{must(await sb.from("emoticons").insert({name:n,image_url:pending.url}));pending=null;toast("이모티콘을 추가했어요");await loadEmo();}
-        catch(err){handleErr(err);ok.disabled=false;}
-      });
-      no.addEventListener("click",()=>{pending=null;drawEmo();});
-      parts.push(h("div",{class:"emo-new"},h("img",{src:pending.url,alt:""}),nm,ok,no));
-    }
-    const add=h("button",{class:"emo add",title:"이모티콘 추가","aria-label":"이모티콘 추가"},"+");
-    add.addEventListener("click",async()=>{
-      const [f]=await pickFiles(false);if(!f)return;
-      add.disabled=true;add.textContent="⏳";
-      try{const url=await uploadSticker(f);pending={url,name:(f.name||"").replace(/\.[^.]+$/,"").slice(0,20)||"이모티콘"};drawEmo();}
-      catch(err){handleErr(err);add.disabled=false;add.textContent="+";}
-    });
-    const tiles=emos.map(e=>{
-      const t=h("button",{class:"emo",title:e.name,"aria-label":e.name},h("img",{src:e.image_url,alt:e.name,loading:"lazy"}));
-      if(emoEdit&&(e.owner===S.uid||S.admin)){
-        t.append(h("span",{class:"x","aria-hidden":"true"},"×"));
-        t.addEventListener("click",async()=>{try{must(await sb.from("emoticons").delete().eq("id",e.id));toast("이모티콘을 지웠어요");await loadEmo();}catch(err){handleErr(err);}});
-      }else t.addEventListener("click",()=>sendSticker(e));
-      return t;
-    });
-    parts.push(h("div",{class:"emo-grid"},add,tiles));
-    if(!emos.length&&!pending)parts.push(h("p",{class:"hint"},"+를 눌러 갖고 있는 그림을 이모티콘으로 추가해 보세요. 추가한 이모티콘은 다정챗 친구 모두가 함께 쓸 수 있어요."));
-    emoPanel.replaceChildren(...parts);
-  };
-  const loadEmo=async()=>{
-    try{emos=must(await sb.from("emoticons").select("id,owner,name,image_url").order("created_at",{ascending:true}).limit(300));}
-    catch(err){handleErr(err);}
-    drawEmo();
-  };
+  const emo=makeEmoPanel(emoPanel,sendSticker);
   emoBtn.addEventListener("click",()=>{
     const open=emoPanel.style.display==="none";
     emoPanel.style.display=open?"":"none";emoBtn.setAttribute("aria-pressed",String(open));
-    if(open){emoPanel.replaceChildren(h("p",{class:"hint",style:"margin:0"},"불러오는 중…"));loadEmo();}
+    if(open)emo.open();
   });
-  main.append(h("div",{class:"room"},head,list,emoPanel,h("div",{class:"composer"},photoBtn,emoBtn,input,sendBtn)));
+  main.append(h("div",{class:"room"},head,noticeBox,memberBox,list,emoPanel,h("div",{class:"composer"},photoBtn,emoBtn,input,sendBtn)));
   list.addEventListener("click",e=>{if(!e.target.closest(".bubble")&&!e.target.closest(".acts")&&S.cur.sel!=null){S.cur.sel=null;renderMsgs();}});
   updateRoomHead();
 
@@ -941,7 +1014,13 @@ function viewRoom(main,code){
       if(!document.hidden){markRead(code);updateBadges();}
     }catch(e){console.warn(e);list.replaceChildren(h("p",{class:"empty"},"이 방의 대화를 볼 수 없어요."));}
   };
-  const loadCount=async()=>{try{const {count}=await sb.from("room_members").select("user_id",{count:"exact",head:true}).eq("room_id",code);S.cur.memberCount=count;updateRoomHead();}catch(e){}};
+  const loadCount=async()=>{
+    try{
+      const rows=must(await sb.from("room_members").select("user_id,joined_at").eq("room_id",code).order("joined_at",{ascending:true}));
+      S.cur.members=rows.map(r=>r.user_id);S.cur.memberCount=rows.length;updateRoomHead();
+      if($("#roommembers")&&$("#roommembers").style.display!=="none")drawMembers();
+    }catch(e){}
+  };
   loadMsgs();loadCount();
   const ch=sb.channel("room-"+code+"-"+Date.now())
     .on("postgres_changes",{event:"INSERT",schema:"public",table:"messages",filter:"room_id=eq."+code},p=>{
@@ -951,6 +1030,78 @@ function viewRoom(main,code){
     .subscribe();
   S.cur.channels.push(ch);
   input.focus();
+}
+function isOwnerOf(c,uid){const r=S.rooms[c];return !!(r&&!r.is_dm&&r.owner&&r.owner===uid);}
+function canManage(c){const r=S.rooms[c];return !!(r&&!r.is_dm&&(r.owner===S.uid||S.admin));}
+function drawNotice(){
+  const box=$("#roomnotice");if(!box||S.view.name!=="room")return;
+  const r=S.rooms[S.view.code];
+  if(!r||!r.notice){box.replaceChildren();box.className="";return;}
+  box.className="notice";
+  const nt=h("div",{class:"nt"},r.notice);
+  box.replaceChildren(h("span",{class:"nb"},"📢 공지"),nt);
+  box.onclick=()=>box.classList.toggle("open");
+}
+function toggleMembers(){
+  const box=$("#roommembers");if(!box)return;
+  const open=box.style.display==="none";box.style.display=open?"":"none";
+  if(open)drawMembers();
+}
+async function drawMembers(){
+  const box=$("#roommembers");if(!box)return;
+  const c=S.view.code,r=S.rooms[c];if(!r)return;
+  const mgr=canManage(c);
+  await fillNamesFor(S.cur.members||[]);
+  const parts=[h("h3",{},"멤버 "+(S.cur.members||[]).length+"명")];
+  const ul=h("ul",{class:"mlist"});
+  for(const uid of (S.cur.members||[])){
+    const isOwner=r.owner===uid,isMe=uid===S.uid;
+    const btns=[];
+    if(mgr&&!isMe&&!isOwner){
+      btns.push(twoStep(h("button",{class:"btn"},"방장 넘기기"),"방장 넘기기","한 번 더 누르면 넘기기",async()=>{
+        try{must(await sb.rpc("room_set_owner",{p_room:c,p_user:uid}));toast((S.names[uid]||"그 사람")+"님이 방장이 됐어요");await loadRooms();drawMembers();}catch(e){handleErr(e);}
+      }));
+      btns.push(twoStep(h("button",{class:"btn danger"},"내보내기"),"내보내기","한 번 더 누르면 내보내기",async()=>{
+        try{must(await sb.rpc("room_kick",{p_room:c,p_user:uid}));toast("내보냈어요. 코드로도 다시 못 들어와요.");S.cur.members=S.cur.members.filter(x=>x!==uid);S.cur.memberCount=S.cur.members.length;updateRoomHead();drawMembers();}catch(e){handleErr(e);}
+      }));
+    }
+    ul.append(h("li",{},h("span",{class:"fn"},isOwner?h("span",{class:"crown",title:"방장"},"👑"):null,S.names[uid]||"…",badgeEl(uid),isMe?" (나)":""),btns));
+  }
+  parts.push(ul);
+  if(mgr){
+    // 공지
+    const nt=h("textarea",{placeholder:"방 공지를 적어 주세요. 비우고 저장하면 공지가 내려가요.",maxlength:"1000"});nt.value=r.notice||"";
+    const ntBtn=h("button",{class:"btn primary"},"공지 저장");
+    ntBtn.addEventListener("click",async()=>{ntBtn.disabled=true;
+      try{must(await sb.rpc("room_set_notice",{p_room:c,p_text:nt.value}));toast(nt.value.trim()?"공지를 올렸어요":"공지를 내렸어요");await loadRooms();}catch(e){handleErr(e);}
+      ntBtn.disabled=false;});
+    // 방 이름/공개
+    const nm=h("input",{type:"text",value:r.name||"",maxlength:"40"});
+    const pub=h("input",{type:"checkbox"});pub.checked=!!r.is_public;
+    const saveBtn=h("button",{class:"btn"},"저장");
+    saveBtn.addEventListener("click",async()=>{saveBtn.disabled=true;
+      try{must(await sb.rpc("room_update",{p_room:c,p_name:nm.value,p_public:pub.checked}));toast("방 설정을 저장했어요");await loadRooms();}catch(e){handleErr(e);}
+      saveBtn.disabled=false;});
+    // 내보낸 사람
+    const banUl=h("ul",{class:"mlist"},h("li",{class:"hint"},"불러오는 중…"));
+    sb.rpc("room_list_bans",{p_room:c}).then(({data,error})=>{
+      if(error){banUl.replaceChildren(h("li",{class:"hint"},"불러오지 못했어요"));return;}
+      if(!data.length){banUl.replaceChildren(h("li",{class:"hint"},"내보낸 사람이 없어요"));return;}
+      banUl.replaceChildren(...data.map(b=>h("li",{},h("span",{class:"fn"},b.name),
+        h("button",{class:"btn",onclick:async()=>{try{must(await sb.rpc("room_unban",{p_room:c,p_user:b.user_id}));toast("다시 들어올 수 있게 했어요");drawMembers();}catch(e){handleErr(e);}}},"다시 허용"))));
+    });
+    const del=twoStep(h("button",{class:"btn danger"},"방 없애기"),"방 없애기","한 번 더 누르면 방과 대화가 모두 지워져요",async()=>{
+      try{must(await sb.rpc("room_delete",{p_room:c}));delete S.rooms[c];toast("방을 없앴어요");go("chat");loadRooms();}catch(e){handleErr(e);}
+    });
+    parts.push(h("div",{class:"mgr"},
+      h("h3",{},"공지"),nt,ntBtn,
+      h("h3",{},"방 이름"),h("div",{class:"row"},nm,saveBtn),h("label",{class:"check"},pub,"공개방 (목록에서 누구나 입장)"),
+      h("h3",{},"내보낸 사람"),banUl,
+      h("h3",{},"방 없애기"),del));
+  }else{
+    parts.push(h("p",{class:"hint"},"👑 표시가 방장이에요. 방장은 공지를 쓰고, 이 방의 메시지를 지우고, 사람을 내보낼 수 있어요."));
+  }
+  box.replaceChildren(...parts);
 }
 function updateRoomHead(){
   const head=$("#roomhead");if(!head||S.view.name!=="room")return;
@@ -964,11 +1115,12 @@ function updateRoomHead(){
     r&&r.is_public?h("span",{class:"pub"},"공개"):null,
     h("button",{class:"mute",title:isMuted(c)?"이 방 알림 켜기":"이 방 알림 끄기","aria-label":isMuted(c)?"이 방 알림 켜기":"이 방 알림 끄기",onclick:()=>setMute(c,!isMuted(c))},isMuted(c)?"🔕":"🔔"),
     r&&!r.is_dm?h("button",{class:"code",title:"입장 코드 복사",onclick:()=>copy(c)},c):null,
-    r&&!r.is_dm&&S.cur.memberCount?h("span",{class:"tm"},S.cur.memberCount+"명"):null,
+    r&&!r.is_dm?h("button",{class:"link",title:"멤버"+(canManage(c)?"와 방 관리":""),onclick:toggleMembers},"👥 "+(S.cur.memberCount||"")+(canManage(c)?" · 관리":"")):null,
     S.admin&&r&&!r.is_dm?twoStep(h("button",{class:"link",style:"color:var(--warn)"},"방 삭제"),"방 삭제","한 번 더 누르면 방 삭제",async()=>{
       try{must(await sb.rpc("admin_delete_room",{p_room:c}));delete S.rooms[c];toast("방을 삭제했어요");go("chat");loadRooms();}catch(e){handleErr(e);}
     }):null,
     leave);
+  drawNotice();
   fillNames();
 }
 function renderMsgs(){
@@ -983,7 +1135,7 @@ function renderMsgs(){
     const day=new Date(m.created_at).toDateString();
     if(day!==prevDay){box.append(h("div",{class:"day"},dayLabel(m.created_at)));prevDay=day;prevBy="";}
     const me=m.author===S.uid;
-    if(!me&&m.author!==prevBy)box.append(h("div",{class:"who"},nameSpan(m.author)));
+    if(!me&&m.author!==prevBy)box.append(h("div",{class:"who"},isOwnerOf(S.view.code,m.author)?h("span",{class:"crown",title:"방장"},"👑"):null,nameSpan(m.author)));
     const onImg=()=>{if(stick)box.scrollTop=box.scrollHeight;};
     const sel=S.cur.sel===m.id;
     const bubble=m.sticker_url
@@ -998,7 +1150,7 @@ function renderMsgs(){
       if(m.image_url)acts.push(h("button",{onclick:()=>window.open(m.image_url,"_blank","noopener")},"크게 보기"));
       if(!m.sticker_url&&m.text)acts.push(h("button",{onclick:()=>{copyText(m.text);S.cur.sel=null;renderMsgs();}},"복사"));
       if(m.image_url)acts.push(h("button",{onclick:()=>{copyText(m.image_url);S.cur.sel=null;renderMsgs();}},"사진 링크 복사"));
-      if(me||S.admin)acts.push(twoStep(h("button",{class:"danger"},"삭제"),"삭제","한 번 더 누르면 삭제",async()=>{
+      if(me||S.admin||isOwnerOf(S.view.code,S.uid))acts.push(twoStep(h("button",{class:"danger"},"삭제"),"삭제","한 번 더 누르면 삭제",async()=>{
         try{must(await sb.from("messages").delete().eq("id",m.id));S.cur.msgs=S.cur.msgs.filter(x=>x.id!==m.id);S.cur.sel=null;renderMsgs();}catch(e){handleErr(e);}
       }));
       if(acts.length)box.append(h("div",{class:"acts"+(me?" me":"")},acts));
@@ -1102,9 +1254,14 @@ function viewFriends(main){
 
 /* ---------- 설정 ---------- */
 function adminModeOn(){try{return localStorage.getItem("adminMode")!=="off";}catch(e){return true;}}
+async function syncAdminBadge(){
+  if(!S.isAdmin)return;
+  try{must(await sb.rpc("set_admin_badge",{p_on:S.admin}));S.badge[S.uid]=S.admin;paintNames();}
+  catch(e){console.warn("admin badge",e);}
+}
 function setAdminMode(on){
   try{localStorage.setItem("adminMode",on?"on":"off");}catch(e){}
-  S.admin=S.isAdmin&&on;renderNav(true);
+  S.admin=S.isAdmin&&on;renderNav(true);syncAdminBadge();
   toast(on?"관리자 모드를 켰어요":"관리자 모드를 껐어요. 일반 사용자처럼 보여요.");
 }
 const THEMES=[["original","기본",["#F4F5F7","#4A6FA5","#DCE6F4"]],["pink","핑크",["#F3F1F6","#C73E73","#F6E3EC"]],["white","화이트",["#FFFFFF","#111113","#ECECEE"]],["black","블랙",["#000000","#FFFFFF","#222222"]]];
@@ -1215,6 +1372,13 @@ function subscribeGlobal(){
     .on("postgres_changes",{event:"*",schema:"public",table:"room_members",filter:"user_id=eq."+S.uid},rr)
     .on("postgres_changes",{event:"INSERT",schema:"public",table:"messages"},rr)
     .on("postgres_changes",{event:"*",schema:"public",table:"friends"},rf)
+    .on("postgres_changes",{event:"UPDATE",schema:"public",table:"profiles"},p=>{
+      const n=p.new;if(!n||!n.id)return;
+      if(n.name)S.names[n.id]=n.name;if("admin_badge" in n)S.badge[n.id]=!!n.admin_badge;
+      paintNames();
+    })
+    .on("postgres_changes",{event:"*",schema:"public",table:"likes"},rp)
+    .on("postgres_changes",{event:"*",schema:"public",table:"comments"},rp)
     .subscribe();
 }
 async function onSession(session){
@@ -1231,6 +1395,7 @@ async function onSession(session){
     S.me={name:p.name,code:p.code};S.names[S.uid]=p.name;
     S.isAdmin=false;try{const {data}=await sb.rpc("is_admin");S.isAdmin=data===true;}catch(e){}
     S.admin=S.isAdmin&&adminModeOn();
+    if(S.isAdmin)syncAdminBadge();
     startApp();
     syncPush();
     const q=new URLSearchParams(location.search).get("room");
