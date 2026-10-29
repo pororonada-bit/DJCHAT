@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>다정챗</title>
 <link rel="manifest" href="manifest.webmanifest">
-<meta name="theme-color" content="#C73E73">
+<meta name="theme-color" content="#4A6FA5">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -14,28 +14,37 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;700&family=Gowun+Dodum&display=swap" rel="stylesheet">
-<script>try{var t=localStorage.getItem("theme");if(t==="white"||t==="black")document.documentElement.setAttribute("data-theme",t);var m=document.querySelector('meta[name="theme-color"]');if(m&&t)m.setAttribute("content",t==="white"?"#FFFFFF":t==="black"?"#000000":"#C73E73");}catch(e){}</script>
+<script>try{var t=localStorage.getItem("theme");if(t==="white"||t==="black"||t==="pink")document.documentElement.setAttribute("data-theme",t);var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute("content",t==="white"?"#FFFFFF":t==="black"?"#000000":t==="pink"?"#C73E73":"#4A6FA5");}catch(e){}</script>
 <style>
 :root{
-  --bg:#F3F1F6;--surface:#FFFFFF;--ink:#221C2B;--muted:#6F6680;--line:#E0DBE7;
-  --accent:#C73E73;--accent-ink:#FFFFFF;--mine:#C73E73;--mine-ink:#FFFFFF;--theirs:#FFFFFF;
-  --warn:#B4322C;--chip:#F6E3EC;--dot:#E5484D;
+  /* 기본 테마: 차분한 회색 바탕 + 부드러운 파랑 */
+  --bg:#F4F5F7;--surface:#FFFFFF;--ink:#1F2329;--muted:#6B7380;--line:#E3E6EB;
+  --accent:#4A6FA5;--accent-ink:#FFFFFF;--mine:#DCE6F4;--mine-ink:#1F2329;--theirs:#FFFFFF;
+  --warn:#C0392B;--chip:#E9EEF6;--dot:#E5484D;
   color-scheme:light;box-sizing:border-box;
   padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
 }
 @media (prefers-color-scheme:dark){
-  :root:not([data-theme="light"]){
+  :root:not([data-theme]){
+    --bg:#15181D;--surface:#1D2128;--ink:#E5E8EC;--muted:#959DA9;--line:#2C323B;
+    --accent:#8DAEDD;--accent-ink:#111722;--mine:#2D4262;--mine-ink:#EAF0F8;--theirs:#262B33;
+    --warn:#F08A80;--chip:#252E3B;--dot:#FF6B6F;color-scheme:dark;
+  }
+}
+/* 핑크 테마 (예전 기본 색) */
+:root[data-theme="pink"]{
+  --bg:#F3F1F6;--surface:#FFFFFF;--ink:#221C2B;--muted:#6F6680;--line:#E0DBE7;
+  --accent:#C73E73;--accent-ink:#FFFFFF;--mine:#C73E73;--mine-ink:#FFFFFF;--theirs:#FFFFFF;
+  --warn:#B4322C;--chip:#F6E3EC;--dot:#E5484D;color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root[data-theme="pink"]{
     --bg:#16131B;--surface:#201C27;--ink:#EEEAF3;--muted:#9C93AB;--line:#322C3B;
     --accent:#F07AA6;--accent-ink:#22121A;--mine:#B8406E;--mine-ink:#FFFFFF;--theirs:#2B2533;
     --warn:#F07A70;--chip:#3A2431;--dot:#FF6B6F;color-scheme:dark;
   }
 }
-:root[data-theme="dark"]{
-  --bg:#16131B;--surface:#201C27;--ink:#EEEAF3;--muted:#9C93AB;--line:#322C3B;
-  --accent:#F07AA6;--accent-ink:#22121A;--mine:#B8406E;--mine-ink:#FFFFFF;--theirs:#2B2533;
-  --warn:#F07A70;--chip:#3A2431;--dot:#FF6B6F;color-scheme:dark;
-}
-/* 테마: 화이트 / 블랙 (원본은 기기 설정에 따라 밝게/어둡게) */
+/* 화이트 / 블랙 테마 */
 :root[data-theme="white"]{
   --bg:#F4F4F5;--surface:#FFFFFF;--ink:#111113;--muted:#6B6B73;--line:#E4E4E7;
   --accent:#111113;--accent-ink:#FFFFFF;--mine:#111113;--mine-ink:#FFFFFF;--theirs:#FFFFFF;
@@ -132,14 +141,14 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--accent)}
 .emo-new{display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap}
 .emo-new img{width:64px;height:64px;object-fit:contain;background:var(--chip);border-radius:10px}
 .emo-new input{flex:1;min-width:120px}
-.admin-tag{font-size:11px;font-weight:700;color:#fff;background:var(--accent);border-radius:999px;padding:1px 7px;margin-left:6px}
+.admin-tag{font-size:11px;font-weight:700;color:var(--accent-ink);background:var(--accent);border-radius:999px;padding:1px 7px;margin-left:6px}
 .banned-tag{font-size:11px;font-weight:700;color:#fff;background:var(--warn);border-radius:999px;padding:1px 7px;margin-left:6px}
 .ulist{list-style:none;margin:0;padding:0}
 .ulist li{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);flex-wrap:wrap}
 .ulist li:last-child{border-bottom:0}
 .ulist .fn{flex:1;min-width:140px}
 .ulist .sub{font-size:12px;color:var(--muted);display:block;font-weight:400}
-.themes{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.themes{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px}
 .theme-opt{border:2px solid var(--line);background:var(--surface);border-radius:12px;padding:10px;display:flex;flex-direction:column;align-items:center;gap:8px;font-weight:500;color:var(--ink)}
 .theme-opt[aria-pressed="true"]{border-color:var(--accent)}
 .swatch{width:100%;height:46px;border-radius:8px;display:flex;align-items:flex-end;justify-content:flex-end;padding:6px;gap:4px;border:1px solid rgba(128,128,128,.25)}
@@ -1098,13 +1107,13 @@ function setAdminMode(on){
   S.admin=S.isAdmin&&on;renderNav(true);
   toast(on?"관리자 모드를 켰어요":"관리자 모드를 껐어요. 일반 사용자처럼 보여요.");
 }
-const THEMES=[["original","원본",["#F3F1F6","#C73E73","#16131B"]],["white","화이트",["#FFFFFF","#111113","#ECECEE"]],["black","블랙",["#000000","#FFFFFF","#222222"]]];
+const THEMES=[["original","기본",["#F4F5F7","#4A6FA5","#DCE6F4"]],["pink","핑크",["#F3F1F6","#C73E73","#F6E3EC"]],["white","화이트",["#FFFFFF","#111113","#ECECEE"]],["black","블랙",["#000000","#FFFFFF","#222222"]]];
 function currentTheme(){try{return localStorage.getItem("theme")||"original";}catch(e){return "original";}}
 function applyTheme(t){
   const r=document.documentElement;
-  if(t==="white"||t==="black")r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
+  if(t==="white"||t==="black"||t==="pink")r.setAttribute("data-theme",t);else r.removeAttribute("data-theme");
   try{localStorage.setItem("theme",t);}catch(e){}
-  const m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute("content",t==="white"?"#FFFFFF":t==="black"?"#000000":"#C73E73");
+  const m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute("content",t==="white"?"#FFFFFF":t==="black"?"#000000":t==="pink"?"#C73E73":"#4A6FA5");
 }
 function viewSettings(main){
   const themeBox=h("div",{class:"themes"});
@@ -1156,7 +1165,7 @@ function viewSettings(main){
   main.append(h("div",{class:"head"},h("h1",{text:"설정"})),
     adminPanel,
     h("div",{class:"panel"},h("h2",{},"테마"),themeBox,
-      h("p",{class:"hint"},"원본은 기기의 밝은 화면·어두운 화면 설정을 따라가요.")),
+      h("p",{class:"hint"},"기본과 핑크는 기기의 밝은 화면·어두운 화면 설정을 따라가요.")),
     h("div",{class:"panel"},h("h2",{},"푸시 알림"),pushRow()),
     h("div",{class:"panel"},h("h2",{},"앱 안 알림"),
       h("div",{class:"setrow"},h("span",{},"알림음"),soundBtn),
