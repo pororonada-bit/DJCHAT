@@ -335,6 +335,8 @@ function handleErr(e){
   else if(/BANNED/.test(m))toast("관리자에 의해 활동이 제한된 계정이에요.");
   else if(/NOT_ADMIN/.test(m))toast("관리자만 할 수 있어요.");
   else if(/CANNOT_BAN_ADMIN/.test(m))toast("관리자는 차단할 수 없어요.");
+  else if(/ADMIN_ONLY_RENAME/.test(m))toast("방 이름은 관리자만 바꿀 수 있어요.");
+  else if(/bad name/.test(m))toast("방 이름은 1~40자로 써 주세요.");
   else if(/NOT_ROOM_OWNER/.test(m))toast("방장만 할 수 있어요.");
   else if(/ROOM_BANNED/.test(m))toast("이 방에서 내보내져서 들어갈 수 없어요.");
   else if(/CANNOT_KICK_OWNER/.test(m))toast("방장은 내보낼 수 없어요.");
@@ -916,12 +918,21 @@ function viewAdmin(main){
     try{
       const rows=must(await sb.rpc("admin_list_rooms"));
       if(!rows.length){rl.replaceChildren(h("li",{class:"empty"},"방이 없어요"));return;}
-      rl.replaceChildren(...rows.map(r=>h("li",{},
+      rl.replaceChildren(...rows.map(r=>{
+        const li=h("li",{});
+        const renameBtn=h("button",{class:"btn"},"이름 바꾸기");
+        renameBtn.addEventListener("click",()=>{
+          li.replaceChildren(renameEditor(r.id,r.name,async changed=>{if(changed){loadRooms();}loadAllRooms();}));
+        });
+        li.append(
         h("span",{class:"fn"},r.name,r.is_public?h("span",{class:"pub",style:"margin-left:6px"},"공개"):null,
           h("span",{class:"sub"},"코드 "+r.id+" · "+r.member_count+"명"+(r.last_at?" · 마지막 대화 "+fmt(r.last_at):""))),
+        renameBtn,
         twoStep(h("button",{class:"btn danger"},"삭제"),"삭제","한 번 더",async()=>{
           try{must(await sb.rpc("admin_delete_room",{p_room:r.id}));toast("방을 삭제했어요");loadAllRooms();loadRooms();}catch(e){handleErr(e);}
-        }))));
+        }));
+        return li;
+      }));
     }catch(e){handleErr(e);rl.replaceChildren(h("li",{class:"empty"},"불러오지 못했어요"));}
   };
   main.append(h("div",{class:"head"},h("h1",{text:"관리"})),
@@ -1054,6 +1065,25 @@ function viewRoom(main,code){
   S.cur.channels.push(ch);
   input.focus();
 }
+/* 관리자용 방 이름 바꾸기 */
+function renameEditor(code,curName,onDone){
+  const inp=h("input",{type:"text",value:curName||"",maxlength:"40","aria-label":"새 방 이름"});
+  const ok=h("button",{class:"btn primary"},"저장");
+  const no=h("button",{class:"btn"},"취소");
+  const box=h("div",{class:"row",style:"flex:1;min-width:200px"},inp,ok,no);
+  const save=async()=>{
+    const n=inp.value.trim();if(!n){toast("방 이름을 입력해 주세요");return;}
+    if(n===curName){onDone(false);return;}
+    ok.disabled=true;
+    try{must(await sb.rpc("room_update",{p_room:code,p_name:n,p_public:null}));toast("방 이름을 바꿨어요");onDone(true);}
+    catch(e){handleErr(e);ok.disabled=false;}
+  };
+  ok.addEventListener("click",save);
+  no.addEventListener("click",()=>onDone(false));
+  inp.addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.isComposing)save();else if(e.key==="Escape")onDone(false);});
+  setTimeout(()=>{inp.focus();inp.select();},0);
+  return box;
+}
 function isOwnerOf(c,uid){const r=S.rooms[c];return !!(r&&!r.is_dm&&r.owner&&r.owner===uid);}
 function canManage(c){const r=S.rooms[c];return !!(r&&!r.is_dm&&(r.owner===S.uid||S.admin));}
 function drawNotice(){
@@ -1103,7 +1133,7 @@ async function drawMembers(){
     const pub=h("input",{type:"checkbox"});pub.checked=!!r.is_public;
     const saveBtn=h("button",{class:"btn"},"저장");
     saveBtn.addEventListener("click",async()=>{saveBtn.disabled=true;
-      try{must(await sb.rpc("room_update",{p_room:c,p_name:nm.value,p_public:pub.checked}));toast("방 설정을 저장했어요");await loadRooms();}catch(e){handleErr(e);}
+      try{must(await sb.rpc("room_update",{p_room:c,p_name:S.admin?nm.value:null,p_public:pub.checked}));toast("방 설정을 저장했어요");await loadRooms();}catch(e){handleErr(e);}
       saveBtn.disabled=false;});
     // 내보낸 사람
     const banUl=h("ul",{class:"mlist"},h("li",{class:"hint"},"불러오는 중…"));
@@ -1118,7 +1148,9 @@ async function drawMembers(){
     });
     parts.push(h("div",{class:"mgr"},
       h("h3",{},"공지"),nt,ntBtn,
-      h("h3",{},"방 이름"),h("div",{class:"row"},nm,saveBtn),h("label",{class:"check"},pub,"공개방 (목록에서 누구나 입장)"),
+      S.admin?h("h3",{},"방 이름 (관리자)"):h("h3",{},"방 설정"),
+      S.admin?h("div",{class:"row"},nm,saveBtn):null,
+      h("div",{class:"row",style:"align-items:center;justify-content:space-between"},h("label",{class:"check",style:"margin:0"},pub,"공개방 (목록에서 누구나 입장)"),S.admin?null:saveBtn),
       h("h3",{},"내보낸 사람"),banUl,
       h("h3",{},"방 없애기"),del));
   }else{
@@ -1134,7 +1166,8 @@ function updateRoomHead(){
   });
   head.replaceChildren(
     h("button",{class:"link",onclick:()=>go("chat")},"목록"),
-    h("span",{class:"rn"},roomNameNode(c)),
+    S.cur.renaming?(S.cur.renameBox||(S.cur.renameBox=renameEditor(c,r&&r.name,async changed=>{S.cur.renaming=false;S.cur.renameBox=null;if(changed)await loadRooms();updateRoomHead();})))
+      :h("span",{class:"rn"},roomNameNode(c),S.admin&&r&&!r.is_dm?h("button",{class:"mute",title:"방 이름 바꾸기","aria-label":"방 이름 바꾸기",onclick:()=>{S.cur.renaming=true;updateRoomHead();}},"✏️"):null),
     r&&r.is_public?h("span",{class:"pub"},"공개"):null,
     h("button",{class:"mute",title:isMuted(c)?"이 방 알림 켜기":"이 방 알림 끄기","aria-label":isMuted(c)?"이 방 알림 켜기":"이 방 알림 끄기",onclick:()=>setMute(c,!isMuted(c))},isMuted(c)?"🔕":"🔔"),
     r&&!r.is_dm?h("button",{class:"code",title:"입장 코드 복사",onclick:()=>copy(c)},c):null,
