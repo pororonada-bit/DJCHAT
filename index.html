@@ -1046,6 +1046,12 @@ function viewFriends(main){
 }
 
 /* ---------- 설정 ---------- */
+function adminModeOn(){try{return localStorage.getItem("adminMode")!=="off";}catch(e){return true;}}
+function setAdminMode(on){
+  try{localStorage.setItem("adminMode",on?"on":"off");}catch(e){}
+  S.admin=S.isAdmin&&on;renderNav(true);
+  toast(on?"관리자 모드를 켰어요":"관리자 모드를 껐어요. 일반 사용자처럼 보여요.");
+}
 const THEMES=[["original","원본",["#F3F1F6","#C73E73","#16131B"]],["white","화이트",["#FFFFFF","#111113","#ECECEE"]],["black","블랙",["#000000","#FFFFFF","#222222"]]];
 function currentTheme(){try{return localStorage.getItem("theme")||"original";}catch(e){return "original";}}
 function applyTheme(t){
@@ -1091,7 +1097,18 @@ function viewSettings(main){
   });
   const out=twoStep(h("button",{class:"btn danger"},"로그아웃"),"로그아웃",S.anon?"닉네임 계정은 로그아웃하면 다시 못 들어와요. 한 번 더 누르면 로그아웃":"한 번 더 누르면 로그아웃",async()=>{await dropServerSub();sb.auth.signOut();});
 
+  let adminPanel=null;
+  if(S.isAdmin){
+    const ab=h("button",{class:"btn"});
+    const drawAb=()=>{ab.textContent=S.admin?"켜짐":"꺼짐";ab.className=S.admin?"btn primary":"btn";};
+    ab.addEventListener("click",()=>{setAdminMode(!S.admin);drawAb();});
+    drawAb();
+    adminPanel=h("div",{class:"panel"},h("h2",{},"관리자"),
+      h("div",{class:"setrow"},h("span",{},"관리자 모드"),ab),
+      h("p",{class:"hint"},"끄면 관리 탭과 남의 글·메시지 삭제 버튼이 숨겨져서 일반 사용자처럼 쓸 수 있어요. 관리자 권한 자체는 그대로라 언제든 다시 켤 수 있어요."));
+  }
   main.append(h("div",{class:"head"},h("h1",{text:"설정"})),
+    adminPanel,
     h("div",{class:"panel"},h("h2",{},"테마"),themeBox,
       h("p",{class:"hint"},"원본은 기기의 밝은 화면·어두운 화면 설정을 따라가요.")),
     h("div",{class:"panel"},h("h2",{},"푸시 알림"),pushRow()),
@@ -1148,7 +1165,8 @@ async function onSession(session){
     for(let i=0;i<3&&!p;i++){const {data}=await sb.from("profiles").select("id,name,code").eq("id",S.uid).maybeSingle();p=data;if(!p)await new Promise(r=>setTimeout(r,600));}
     if(!p){toast("프로필을 찾지 못했어요. 데이터베이스 설정(setup.sql)을 실행했는지 확인해 주세요.");S.started=false;await sb.auth.signOut();return;}
     S.me={name:p.name,code:p.code};S.names[S.uid]=p.name;
-    S.admin=false;try{const {data}=await sb.rpc("is_admin");S.admin=data===true;}catch(e){}
+    S.isAdmin=false;try{const {data}=await sb.rpc("is_admin");S.isAdmin=data===true;}catch(e){}
+    S.admin=S.isAdmin&&adminModeOn();
     startApp();
     syncPush();
     const q=new URLSearchParams(location.search).get("room");
