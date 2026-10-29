@@ -209,6 +209,14 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--accent)}
 .g-dots i.on{background:var(--accent);width:18px;border-radius:4px}
 .g-btns{display:flex;gap:8px;justify-content:space-between;align-items:center}
 @media (prefers-reduced-motion:reduce){.guide{animation:none}}
+#sitenotice:empty{display:none}
+#sitenotice{max-width:720px;margin:0 auto;padding:12px 16px 0}
+.snote{display:flex;gap:10px;align-items:flex-start;background:var(--chip);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:12px;padding:10px 12px}
+.snote .sn-b{font-weight:700;color:var(--accent);flex:none}
+.snote .sn-t{flex:1;white-space:pre-wrap;word-break:break-word;max-height:3.2em;overflow:hidden;cursor:pointer;font-size:15px}
+.snote.open .sn-t{max-height:none}
+.snote .sn-x{border:0;background:none;color:var(--muted);font-size:18px;line-height:1;padding:0 2px;flex:none}
+.snote .sn-d{display:block;font-size:12px;color:var(--muted);margin-top:4px}
 /* 게시판 */
 .posts{list-style:none;margin:0;padding:0;background:var(--surface);border-radius:12px;border:1px solid var(--line);overflow:hidden}
 .posts li+li{border-top:1px solid var(--line)}
@@ -280,6 +288,7 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--accent)}
   </div>
 </header>
 <noscript><p style="padding:20px">다정챗은 친구들과 게시판에 글을 나누고 채팅방에서 이야기하는 작은 커뮤니티예요. 이용하려면 자바스크립트를 켜 주세요.</p></noscript>
+<div id="sitenotice"></div>
 <main id="main"><p class="empty">불러오는 중…</p></main>
 <div class="ptr" id="ptr" aria-hidden="true"><span>↻</span></div>
 <div class="toasts" id="toasts" aria-live="polite"></div>
@@ -335,6 +344,7 @@ function handleErr(e){
   else if(/BANNED/.test(m))toast("관리자에 의해 활동이 제한된 계정이에요.");
   else if(/NOT_ADMIN/.test(m))toast("관리자만 할 수 있어요.");
   else if(/CANNOT_BAN_ADMIN/.test(m))toast("관리자는 차단할 수 없어요.");
+  else if(/site_notice/.test(m))toast("사이트 공지 설정이 필요해요. add-site-notice.sql을 실행해 주세요.");
   else if(/ADMIN_ONLY_RENAME/.test(m))toast("방 이름은 관리자만 바꿀 수 있어요.");
   else if(/bad name/.test(m))toast("방 이름은 1~40자로 써 주세요.");
   else if(/NOT_ROOM_OWNER/.test(m))toast("방장만 할 수 있어요.");
@@ -561,7 +571,7 @@ function updateBadges(){
 }
 document.addEventListener("visibilitychange",()=>{if(!document.hidden&&S.view.name==="room"){markRead(S.view.code);updateBadges();updateRoomList();}});
 // 앱을 다시 열거나 인터넷이 다시 연결되면 목록을 새로 받아오기 (홈 화면 앱은 백그라운드에서 연결이 끊기기 쉬워요)
-const resync=debounce(()=>{if(!S.started)return;loadRooms();loadPosts();loadFriends();loadMutes();},400);
+const resync=debounce(()=>{if(!S.started)return;loadRooms();loadPosts();loadFriends();loadMutes();loadSiteNotice();},400);
 
 /* 새로고침: 지금 보고 있는 화면과 목록을 다시 받아오고 실시간 연결도 새로 맺어요 */
 let refreshing=false;
@@ -935,7 +945,30 @@ function viewAdmin(main){
       }));
     }catch(e){handleErr(e);rl.replaceChildren(h("li",{class:"empty"},"불러오지 못했어요"));}
   };
+  // 사이트 전체 공지
+  const snText=h("textarea",{placeholder:"모든 사람 화면 위쪽에 보일 공지를 적어 주세요.",maxlength:"2000",style:"width:100%;min-height:90px;resize:vertical"});
+  snText.value=(S.siteNotice&&S.siteNotice.text)||"";
+  const snPush=h("input",{type:"checkbox"});
+  const snPost=h("button",{class:"btn primary"},"공지 올리기");
+  const snDown=twoStep(h("button",{class:"btn"},"공지 내리기"),"공지 내리기","한 번 더 누르면 내리기",async()=>{
+    try{must(await sb.rpc("admin_set_site_notice",{p_text:"",p_push:false}));snText.value="";toast("공지를 내렸어요");await loadSiteNotice();}catch(e){handleErr(e);}
+  });
+  snPost.addEventListener("click",async()=>{
+    const t=snText.value.trim();if(!t){toast("공지 내용을 적어 주세요");snText.focus();return;}
+    snPost.disabled=true;
+    try{
+      must(await sb.rpc("admin_set_site_notice",{p_text:t,p_push:snPush.checked}));
+      try{localStorage.removeItem("snhide");}catch(e){}
+      toast(snPush.checked?"공지를 올리고 모두에게 알림을 보냈어요":"공지를 올렸어요");snPush.checked=false;
+      await loadSiteNotice();
+    }catch(e){handleErr(e);}
+    snPost.disabled=false;
+  });
   main.append(h("div",{class:"head"},h("h1",{text:"관리"})),
+    h("div",{class:"panel"},h("h2",{},"📢 사이트 전체 공지"),snText,
+      h("label",{class:"check"},snPush,"푸시 알림도 모두에게 보내기"),
+      h("div",{class:"row",style:"margin-top:10px;flex-wrap:wrap"},snPost,snDown),
+      h("p",{class:"hint"},"올린 공지는 모든 사람 화면 맨 위에 떠요. 각자 ×로 닫을 수 있고, 새 공지를 올리면 다시 보여요.")),
     h("div",{class:"panel"},h("p",{class:"hint",style:"margin:0"},"관리자는 모든 글, 댓글, 이모티콘을 지울 수 있고, 들어가 있는 방의 메시지도 지울 수 있어요. 지우기는 각 화면의 삭제 버튼을 쓰면 돼요. 차단된 사람은 글쓰기, 댓글, 메시지, 방 만들기를 못 해요.")),
     h("div",{class:"panel"},h("h2",{},"사람"),search,h("div",{style:"margin-top:8px"},ul)),
     h("div",{class:"panel"},h("h2",{},"채팅방 (1:1 채팅 제외)"),rl));
@@ -1308,6 +1341,33 @@ function viewFriends(main){
   updateFriends();
 }
 
+/* ---------- 사이트 전체 공지 ---------- */
+let siteNoticeFirst=true;
+async function loadSiteNotice(){
+  try{
+    const {data,error}=await sb.from("site_notice").select("text,updated_at").eq("id",1).maybeSingle();
+    if(error)throw error;
+    const prev=S.siteNotice;
+    S.siteNotice=data&&data.text?data:null;
+    if(!siteNoticeFirst&&S.siteNotice&&(!prev||prev.updated_at!==S.siteNotice.updated_at)){beep();toast("📢 새 공지가 올라왔어요");}
+    siteNoticeFirst=false;
+  }catch(e){console.warn("site notice",e);S.siteNotice=null;}
+  drawSiteNotice();
+}
+function drawSiteNotice(){
+  const box=$("#sitenotice");if(!box)return;
+  const n=S.started?S.siteNotice:null;
+  let hidden=false;try{hidden=!!n&&localStorage.getItem("snhide")===n.updated_at;}catch(e){}
+  if(!n||hidden){box.replaceChildren();return;}
+  const wrap=h("div",{class:"snote",role:"note"});
+  const t=h("div",{class:"sn-t",title:"눌러서 펼치기"},n.text,h("span",{class:"sn-d"},"관리자 공지 · "+fmt(n.updated_at)));
+  t.addEventListener("click",()=>wrap.classList.toggle("open"));
+  const x=h("button",{class:"sn-x",title:"이 공지 닫기","aria-label":"이 공지 닫기"},"×");
+  x.addEventListener("click",()=>{try{localStorage.setItem("snhide",n.updated_at);}catch(e){}drawSiteNotice();});
+  wrap.append(h("span",{class:"sn-b"},"📢 공지"),t,x);
+  box.replaceChildren(wrap);
+}
+
 /* ---------- 처음 온 사람을 위한 가이드 ---------- */
 function guideSeen(){try{return localStorage.getItem("guide:"+S.uid)==="1";}catch(e){return true;}}
 function markGuideSeen(){try{localStorage.setItem("guide:"+S.uid,"1");}catch(e){}}
@@ -1484,6 +1544,7 @@ async function startApp(){
   S.mutes=new Set();
   go("board");
   loadPosts();loadRooms();loadFriends();loadMutes();
+  siteNoticeFirst=true;loadSiteNotice();
   subscribeGlobal();
 }
 function subscribeGlobal(){
@@ -1500,6 +1561,7 @@ function subscribeGlobal(){
       if(n.name)S.names[n.id]=n.name;if("admin_badge" in n)S.badge[n.id]=!!n.admin_badge;
       paintNames();
     })
+    .on("postgres_changes",{event:"*",schema:"public",table:"site_notice"},debounce(loadSiteNotice,300))
     .on("postgres_changes",{event:"*",schema:"public",table:"likes"},rp)
     .on("postgres_changes",{event:"*",schema:"public",table:"comments"},rp)
     .subscribe();
@@ -1507,7 +1569,7 @@ function subscribeGlobal(){
 async function onSession(session){
   if(!session){
     if(S.gch){sb.removeChannel(S.gch);S.gch=null;}
-    clearCur();S.uid=null;S.me=null;S.started=false;viewLogin();return;
+    clearCur();S.uid=null;S.me=null;S.started=false;drawSiteNotice();viewLogin();return;
   }
   if(S.started&&S.uid===session.user.id)return;
   S.uid=session.user.id;S.anon=!!session.user.is_anonymous;S.started=true;
