@@ -321,9 +321,26 @@ function renderView(){
   fillNames();
 }
 
-/* ---------- 로그인 / 가입 ---------- */
+/* ---------- 시작 화면 ---------- */
 function viewLogin(){
   renderNav(false);
+  // 빠른 시작: 닉네임만
+  const qNick=h("input",{type:"text",placeholder:"닉네임 (최대 20자)",maxlength:"20"});
+  const qBtn=h("button",{class:"btn primary"},"바로 시작하기");
+  const quick=async()=>{
+    const n=qNick.value.trim();if(!n){toast("닉네임을 입력해 주세요");qNick.focus();return;}
+    qBtn.disabled=true;
+    try{const r=await sb.auth.signInAnonymously({options:{data:{name:n.slice(0,20)}}});if(r.error)throw r.error;}
+    catch(err){
+      if(/Anonymous sign-ins are disabled/i.test(err.message||""))toast("Supabase에서 익명 로그인(Allow anonymous sign-ins)을 켜 주세요.");
+      else handleErr(err);
+    }
+    qBtn.disabled=false;
+  };
+  qBtn.addEventListener("click",quick);
+  qNick.addEventListener("keydown",ev=>{if(ev.key==="Enter"&&!ev.isComposing)quick();});
+
+  // 이메일 계정
   let mode="login";
   const email=h("input",{type:"email",placeholder:"이메일",autocomplete:"email"});
   const pw=h("input",{type:"password",placeholder:"비밀번호 (6자 이상)",autocomplete:"current-password"});
@@ -356,11 +373,18 @@ function viewLogin(){
   btn.addEventListener("click",submit);
   for(const i of [email,pw,nick])i.addEventListener("keydown",ev=>{if(ev.key==="Enter"&&!ev.isComposing)submit();});
   setMode("login");
+  const emailBox=h("div",{class:"stack",style:"display:none;margin-top:6px"},h("div",{class:"tabs"},tLogin,tSign),email,pw,nick,btn,
+    h("p",{class:"hint"},"이메일 계정은 다른 기기에서도 같은 계정으로 들어올 수 있어요."));
+  const toggle=h("button",{class:"link",style:"align-self:center;margin-top:8px"},"이메일 계정으로 하기");
+  toggle.addEventListener("click",()=>{const open=emailBox.style.display==="none";emailBox.style.display=open?"":"none";toggle.textContent=open?"접기":"이메일 계정으로 하기";});
+
   $("#main").replaceChildren(h("div",{class:"welcome"},
     h("p",{class:"logo"},"다정챗"),
     h("p",{},"친구들과 글을 나누고 이야기하는 작은 방"),
-    h("div",{class:"stack"},h("div",{class:"tabs"},tLogin,tSign),email,pw,nick,btn,
-      h("p",{class:"hint"},"가입할 때 확인 메일은 오지 않아요. 비밀번호는 잊지 않게 따로 적어 두세요."))));
+    h("div",{class:"stack"},qNick,qBtn,
+      h("p",{class:"hint"},"가입 없이 닉네임만으로 시작해요. 이 기기의 이 브라우저에 계정이 저장되니, 방문 기록을 지우면 다시 들어올 수 없어요."),
+      toggle,emailBox)));
+  qNick.focus();
 }
 
 /* ---------- 게시판 ---------- */
@@ -708,7 +732,7 @@ function viewFriends(main){
     notiBtn=h("button",{class:"btn"},"브라우저 알림 켜기");
     notiBtn.addEventListener("click",async()=>{const p=await Notification.requestPermission();toast(p==="granted"?"다른 탭을 보고 있을 때도 알림이 떠요":"알림을 허용하지 않았어요");if(p!=="default")notiBtn.remove();});
   }
-  const out=twoStep(h("button",{class:"btn danger"},"로그아웃"),"로그아웃","한 번 더 누르면 로그아웃",()=>sb.auth.signOut());
+  const out=twoStep(h("button",{class:"btn danger"},"로그아웃"),"로그아웃",S.anon?"닉네임 계정은 로그아웃하면 다시 못 들어와요. 한 번 더 누르면 로그아웃":"한 번 더 누르면 로그아웃",()=>sb.auth.signOut());
 
   main.append(h("div",{class:"head"},h("h1",{text:"친구"})),
     h("div",{class:"panel"},h("h2",{},"내 친구 코드"),h("div",{class:"mycode"},
@@ -760,7 +784,7 @@ async function onSession(session){
     clearCur();S.uid=null;S.me=null;S.started=false;viewLogin();return;
   }
   if(S.started&&S.uid===session.user.id)return;
-  S.uid=session.user.id;S.started=true;
+  S.uid=session.user.id;S.anon=!!session.user.is_anonymous;S.started=true;
   try{
     let p=null;
     for(let i=0;i<3&&!p;i++){const {data}=await sb.from("profiles").select("id,name,code").eq("id",S.uid).maybeSingle();p=data;if(!p)await new Promise(r=>setTimeout(r,600));}
