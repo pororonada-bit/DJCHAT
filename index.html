@@ -149,6 +149,13 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--accent)}
 .setrow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 0}
 @media (max-width:560px){.logo{font-size:19px}nav{gap:0}nav button{padding:6px 8px;font-size:15px}}
 @media (max-width:400px){.logo{display:none}nav{margin-left:0}}
+#refresh{font-size:20px;line-height:1}
+#refresh.spin{animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.ptr{position:fixed;left:0;right:0;top:0;padding-top:calc(env(safe-area-inset-top,0px) + 64px);display:flex;justify-content:center;pointer-events:none;z-index:4;opacity:0;transition:opacity .15s}
+.ptr span{width:36px;height:36px;border-radius:50%;background:var(--surface);color:var(--accent);border:1px solid var(--line);display:grid;place-items:center;font-size:20px;box-shadow:0 4px 14px rgba(0,0,0,.15)}
+.ptr.ready span{background:var(--accent);color:var(--accent-ink)}
+@media (prefers-reduced-motion:reduce){#refresh.spin{animation:none}}
 /* 게시판 */
 .posts{list-style:none;margin:0;padding:0;background:var(--surface);border-radius:12px;border:1px solid var(--line);overflow:hidden}
 .posts li+li{border-top:1px solid var(--line)}
@@ -215,10 +222,12 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--accent)}
   <div class="bar">
     <p class="logo">다정챗</p>
     <nav id="nav"></nav>
+    <button class="sound" id="refresh" title="새로고침" aria-label="새로고침">↻</button>
     <button class="sound" id="sound" title="알림음 켜기/끄기" aria-label="알림음">🔔</button>
   </div>
 </header>
 <main id="main"><p class="empty">불러오는 중…</p></main>
+<div class="ptr" id="ptr" aria-hidden="true"><span>↻</span></div>
 <div class="toasts" id="toasts" aria-live="polite"></div>
 
 <script type="module">
@@ -436,6 +445,43 @@ function updateBadges(){
 document.addEventListener("visibilitychange",()=>{if(!document.hidden&&S.view.name==="room"){markRead(S.view.code);updateBadges();updateRoomList();}});
 // 앱을 다시 열거나 인터넷이 다시 연결되면 목록을 새로 받아오기 (홈 화면 앱은 백그라운드에서 연결이 끊기기 쉬워요)
 const resync=debounce(()=>{if(!S.started)return;loadRooms();loadPosts();loadFriends();loadMutes();},400);
+
+/* 새로고침: 지금 보고 있는 화면과 목록을 다시 받아오고 실시간 연결도 새로 맺어요 */
+let refreshing=false;
+async function refreshAll(){
+  if(!S.started||refreshing)return;
+  refreshing=true;const rb=$("#refresh");rb.classList.add("spin");
+  try{
+    subscribeGlobal();
+    await Promise.all([loadRooms(),loadPosts(),loadFriends(),loadMutes()]);
+    if(S.view.name!=="write")go(S.tab,S.view);
+    toast("새로고침했어요");
+  }catch(e){handleErr(e);}
+  setTimeout(()=>{rb.classList.remove("spin");refreshing=false;},400);
+}
+$("#refresh").addEventListener("click",refreshAll);
+
+/* 화면 맨 위에서 아래로 끌어내리면 새로고침 (채팅 말풍선 영역 제외) */
+(()=>{
+  const ptr=$("#ptr");let y0=null,dy=0;
+  window.addEventListener("touchstart",e=>{
+    if(!S.started||window.scrollY>0||e.touches.length!==1||e.target.closest(".msgs,.emo-panel,textarea,input")){y0=null;return;}
+    y0=e.touches[0].clientY;dy=0;
+  },{passive:true});
+  window.addEventListener("touchmove",e=>{
+    if(y0==null)return;
+    dy=e.touches[0].clientY-y0;
+    if(dy<=0||window.scrollY>0){ptr.style.opacity="0";return;}
+    const d=Math.min(dy,120);
+    ptr.style.opacity=String(Math.min(1,d/70));
+    ptr.style.transform="translateY("+(d/2)+"px)";
+    ptr.classList.toggle("ready",dy>80);
+  },{passive:true});
+  window.addEventListener("touchend",()=>{
+    if(y0!=null&&dy>80&&window.scrollY<=0)refreshAll();
+    y0=null;dy=0;ptr.style.opacity="0";ptr.style.transform="";ptr.classList.remove("ready");
+  });
+})();
 document.addEventListener("visibilitychange",()=>{if(!document.hidden)resync();});
 window.addEventListener("online",resync);
 window.addEventListener("pageshow",e=>{if(e.persisted)resync();});
@@ -1115,6 +1161,12 @@ function viewSettings(main){
     h("div",{class:"panel"},h("h2",{},"앱 안 알림"),
       h("div",{class:"setrow"},h("span",{},"알림음"),soundBtn),
       h("h2",{style:"margin:12px 0 4px"},"알림 끈 채팅방"),mutedRooms),
+    h("div",{class:"panel"},h("h2",{},"앱 업데이트"),
+      h("p",{class:"hint",style:"margin:0 0 10px"},"GitHub에 새 버전을 올렸는데 화면이 그대로면 눌러 주세요. 앱 전체를 새로 받아와요."),
+      h("button",{class:"btn",onclick:async()=>{
+        try{const reg=await navigator.serviceWorker?.getRegistration();if(reg)await reg.update();}catch(e){}
+        location.replace(location.pathname+"?v="+Date.now());
+      }},"앱 새로 불러오기")),
     h("div",{class:"panel"},h("h2",{},"내 정보"),h("div",{class:"row"},nick,nickBtn),
       h("div",{class:"row",style:"margin-top:10px;flex-wrap:wrap"},out)));
 }
@@ -1143,9 +1195,12 @@ async function startApp(){
   S.mutes=new Set();
   go("board");
   loadPosts();loadRooms();loadFriends();loadMutes();
+  subscribeGlobal();
+}
+function subscribeGlobal(){
   if(S.gch)sb.removeChannel(S.gch);
   const rp=debounce(loadPosts),rr=debounce(loadRooms,300),rf=debounce(loadFriends);
-  S.gch=sb.channel("global-"+S.uid)
+  S.gch=sb.channel("global-"+S.uid+"-"+Date.now())
     .on("postgres_changes",{event:"*",schema:"public",table:"posts"},rp)
     .on("postgres_changes",{event:"*",schema:"public",table:"rooms"},rr)
     .on("postgres_changes",{event:"*",schema:"public",table:"room_members",filter:"user_id=eq."+S.uid},rr)
