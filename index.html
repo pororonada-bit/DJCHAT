@@ -197,6 +197,18 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--accent)}
 .mlist .fn{flex:1;min-width:120px}
 .mlist .btn{padding:5px 10px;font-size:13px}
 .mgr textarea{width:100%;min-height:70px;resize:vertical;margin-bottom:8px}
+.guide-back{position:fixed;inset:0;z-index:30;background:rgba(10,12,16,.55);display:grid;place-items:center;padding:calc(16px + env(safe-area-inset-top,0px)) 16px calc(16px + env(safe-area-inset-bottom,0px))}
+.guide{width:min(440px,100%);max-height:100%;overflow-y:auto;background:var(--surface);color:var(--ink);border-radius:18px;padding:26px 22px 18px;box-shadow:0 20px 50px rgba(0,0,0,.3);animation:pop .2s ease-out}
+.guide .g-emoji{font-size:44px;line-height:1;margin-bottom:12px}
+.guide h2{font-size:21px;color:var(--ink);margin:0 0 10px;font-weight:700}
+.guide ul{margin:0;padding-left:20px;line-height:1.7}
+.guide li{margin-bottom:4px}
+.guide .g-note{font-size:13px;color:var(--muted);background:var(--chip);border-radius:10px;padding:8px 10px;margin-top:12px}
+.g-dots{display:flex;justify-content:center;gap:6px;margin:18px 0 14px}
+.g-dots i{width:7px;height:7px;border-radius:50%;background:var(--line)}
+.g-dots i.on{background:var(--accent);width:18px;border-radius:4px}
+.g-btns{display:flex;gap:8px;justify-content:space-between;align-items:center}
+@media (prefers-reduced-motion:reduce){.guide{animation:none}}
 /* 게시판 */
 .posts{list-style:none;margin:0;padding:0;background:var(--surface);border-radius:12px;border:1px solid var(--line);overflow:hidden}
 .posts li+li{border-top:1px solid var(--line)}
@@ -1263,6 +1275,70 @@ function viewFriends(main){
   updateFriends();
 }
 
+/* ---------- 처음 온 사람을 위한 가이드 ---------- */
+function guideSeen(){try{return localStorage.getItem("guide:"+S.uid)==="1";}catch(e){return true;}}
+function markGuideSeen(){try{localStorage.setItem("guide:"+S.uid,"1");}catch(e){}}
+function showGuide(){
+  if($(".guide-back"))return;
+  const steps=[
+    {e:"👋",t:"다정챗에 온 걸 환영해요!",b:[
+      "친구들과 글을 나누고 이야기하는 작은 방이에요.",
+      "위쪽의 게시판 · 채팅 · 친구 · 설정 탭으로 이동해요.",
+      "잠깐만 둘러보면 금방 익숙해져요."],
+      n:S.anon?"닉네임으로 시작한 계정은 이 기기의 이 브라우저에만 저장돼요. 방문 기록을 지우거나 로그아웃하면 다시 들어올 수 없으니 조심하세요.":null},
+    {e:"📝",t:"게시판",b:[
+      "글쓰기로 글을 올리고, 사진은 4장까지 붙일 수 있어요.",
+      "마음에 드는 글엔 추천을 눌러 주세요.",
+      "댓글 옆 😊로 이모티콘 댓글도 달 수 있어요.",
+      "목록 위에서 최신순 · 추천순 · 댓글순으로 볼 수 있어요."]},
+    {e:"💬",t:"채팅",b:[
+      "공개방은 목록에서 바로 입장해요.",
+      "친구가 알려준 6자리 코드로 비공개방에 들어갈 수 있어요.",
+      "📷로 사진, 😊로 이모티콘을 보내요. 이모티콘 창의 +로 내 그림을 이모티콘으로 만들 수 있어요.",
+      "말풍선을 톡 누르면 복사나 삭제를 할 수 있어요.",
+      "방 위쪽 🔔로 그 방 알림만 끌 수 있고, 👥로 멤버를 봐요. 👑가 방장이에요."]},
+    {e:"👫",t:"친구",b:[
+      "친구 탭에 내 친구 코드가 있어요. 눌러서 복사해 친구에게 보내 주세요.",
+      "친구 코드를 입력하면 친구로 추가돼요.",
+      "친구 목록에서 1:1 채팅을 바로 열 수 있어요."]},
+    {e:"⚙️",t:"설정",b:[
+      "테마를 기본 · 핑크 · 화이트 · 블랙 중에 골라요.",
+      "닉네임을 바꾸고 알림음을 켜고 끌 수 있어요.",
+      "화면이 안 바뀌면 위쪽 ↻를 누르거나 화면을 아래로 당겨 새로고침해요."]},
+    isIOS&&!isStandalone
+      ?{e:"📱",t:"앱처럼 쓰기",b:[
+        "사파리 공유 버튼 → 홈 화면에 추가를 누르면 다정챗이 앱처럼 설치돼요.",
+        "홈 화면의 다정챗 아이콘으로 열고, 설정 → 푸시 알림을 켜면 앱을 꺼둬도 알림이 와요."],
+        n:"홈 화면 앱은 사파리와 계정이 따로예요. 같은 계정을 쓰려면 아이디로 가입해서 로그인하세요."}
+      :{e:"🔔",t:"알림 받기",b:[
+        "설정 → 푸시 알림을 켜면 다정챗을 닫아도 새 메시지, 새 글, 친구 요청 알림이 와요.",
+        "시끄러운 방은 그 방에서 🔔를 눌러 알림을 꺼 두세요."],
+        go:"settings"}
+  ];
+  let i=0;
+  const back=h("div",{class:"guide-back",role:"dialog","aria-modal":"true","aria-label":"다정챗 사용법"});
+  const close=()=>{markGuideSeen();back.remove();document.removeEventListener("keydown",onKey);};
+  const onKey=e=>{if(e.key==="Escape")close();else if(e.key==="ArrowRight"&&i<steps.length-1){i++;draw();}else if(e.key==="ArrowLeft"&&i>0){i--;draw();}};
+  const draw=()=>{
+    const st=steps[i],last=i===steps.length-1;
+    const prev=h("button",{class:"btn",style:i?"":"visibility:hidden",onclick:()=>{i--;draw();}},"이전");
+    const skip=h("button",{class:"link",onclick:close},"건너뛰기");
+    const next=h("button",{class:"btn primary",onclick:()=>{if(last){close();if(st.go)go(st.go);}else{i++;draw();}}},last?(st.go?"알림 켜러 가기":"시작하기"):"다음");
+    back.replaceChildren(h("div",{class:"guide"},
+      h("div",{class:"g-emoji","aria-hidden":"true"},st.e),
+      h("h2",{},st.t),
+      h("ul",{},st.b.map(x=>h("li",{},x))),
+      st.n?h("p",{class:"g-note"},st.n):null,
+      h("div",{class:"g-dots","aria-hidden":"true"},steps.map((_,k)=>h("i",{class:k===i?"on":""}))),
+      h("div",{class:"g-btns"},prev,last?h("span"):skip,next)));
+    next.focus();
+  };
+  back.addEventListener("click",e=>{if(e.target===back)close();});
+  document.addEventListener("keydown",onKey);
+  document.body.append(back);
+  draw();
+}
+
 /* ---------- 설정 ---------- */
 function adminModeOn(){try{return localStorage.getItem("adminMode")!=="off";}catch(e){return true;}}
 async function syncAdminBadge(){
@@ -1338,6 +1414,9 @@ function viewSettings(main){
     h("div",{class:"panel"},h("h2",{},"앱 안 알림"),
       h("div",{class:"setrow"},h("span",{},"알림음"),soundBtn),
       h("h2",{style:"margin:12px 0 4px"},"알림 끈 채팅방"),mutedRooms),
+    h("div",{class:"panel"},h("h2",{},"도움말"),
+      h("p",{class:"hint",style:"margin:0 0 10px"},"다정챗 사용법을 처음부터 다시 볼 수 있어요."),
+      h("button",{class:"btn",onclick:showGuide},"사용법 다시 보기")),
     h("div",{class:"panel"},h("h2",{},"앱 업데이트"),
       h("p",{class:"hint",style:"margin:0 0 10px"},"GitHub에 새 버전을 올렸는데 화면이 그대로면 눌러 주세요. 앱 전체를 새로 받아와요."),
       h("button",{class:"btn",onclick:async()=>{
@@ -1408,6 +1487,7 @@ async function onSession(session){
     S.admin=S.isAdmin&&adminModeOn();
     if(S.isAdmin)syncAdminBadge();
     startApp();
+    if(!guideSeen())setTimeout(showGuide,600);
     syncPush();
     const q=new URLSearchParams(location.search).get("room");
     if(q){try{history.replaceState(null,"",location.pathname);}catch(e){}go("chat",{name:"room",code:q});}
