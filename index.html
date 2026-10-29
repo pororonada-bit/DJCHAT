@@ -4,6 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>다정챗</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#C73E73">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="다정챗">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💬</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -218,6 +224,10 @@ function handleErr(e){
   else if(m==="NOT_IMAGE")toast("이 파일은 사진으로 올릴 수 없어요.");
   else if(m==="TOO_BIG"||/exceeded the maximum|too large/i.test(m))toast("사진이 너무 커요. 5MB 이하로 올려 주세요.");
   else if(/images_check|content_check|column .* does not exist/i.test(m))toast("사진 기능 설정이 필요해요. add-photos.sql을 실행해 주세요.");
+  else if(m==="PERM_DENIED")toast("알림이 허용되지 않았어요. 기기(브라우저) 설정에서 알림을 허용해 주세요.");
+  else if(m==="SW_FAIL")toast("알림 준비에 실패했어요. sw.js 파일이 index.html과 같은 곳에 올라가 있는지 확인해 주세요.");
+  else if(/save_push_subscription|remove_push_subscription|send_test_push/i.test(m))toast("푸시 설정이 필요해요. add-push.sql을 실행해 주세요.");
+  else if(/push service|registration failed|subscribe/i.test(m))toast("이 기기에서는 푸시 알림을 켤 수 없어요.");
   else if(/Failed to fetch|NetworkError/i.test(m))toast("인터넷 연결을 확인해 주세요.");
   else toast("처리하지 못했어요. 다시 시도해 주세요.");
 }
@@ -263,7 +273,39 @@ function beep(){if(!S.sound||!actx)return;try{const o=actx.createOscillator(),g=
 function renderSound(){const b=$("#sound");b.textContent=S.sound?"🔔":"🔕";b.setAttribute("aria-pressed",String(S.sound));}
 $("#sound").addEventListener("click",()=>{S.sound=!S.sound;try{localStorage.setItem("sound",S.sound?"on":"off")}catch(e){}renderSound();toast(S.sound?"알림음을 켰어요":"알림음을 껐어요");});
 renderSound();
-function sysNotify(title,body){try{if(document.hidden&&"Notification" in window&&Notification.permission==="granted")new Notification(title,{body,tag:"dajeong"});}catch(e){}}
+function sysNotify(title,body){try{if(S.pushOn)return;if(document.hidden&&"Notification" in window&&Notification.permission==="granted")new Notification(title,{body,tag:"dajeong"});}catch(e){}}
+
+/* 푸시 알림 (앱을 꺼놔도 오는 알림) */
+const VAPID_PUBLIC_KEY="BPYJYfvQvUsBZfT9dLNXDB2NisOsTwliELdG8NWx71m4Xw5NgSq1ixyynTq3ZqJ06jtxBiqxp0RJC-m0FfX8R4Y";
+const pushOK="serviceWorker" in navigator&&"PushManager" in window&&"Notification" in window;
+const isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
+const isStandalone=(window.matchMedia&&window.matchMedia("(display-mode: standalone)").matches)||navigator.standalone===true;
+function b64ToU8(s){const p="=".repeat((4-s.length%4)%4);const b=atob((s+p).replace(/-/g,"+").replace(/_/g,"/"));return Uint8Array.from(b,c=>c.charCodeAt(0));}
+async function swReady(){
+  if(!("serviceWorker" in navigator))throw new Error("SW_FAIL");
+  return await Promise.race([navigator.serviceWorker.ready,new Promise((_,no)=>setTimeout(()=>no(new Error("SW_FAIL")),8000))]);
+}
+async function curSub(){try{if(!pushOK)return null;const reg=await navigator.serviceWorker.getRegistration();return reg?await reg.pushManager.getSubscription():null;}catch(e){return null;}}
+async function refreshPushState(){S.pushOn=!!(pushOK&&Notification.permission==="granted"&&await curSub());return S.pushOn;}
+async function saveSub(sub){const j=sub.toJSON();must(await sb.rpc("save_push_subscription",{p_endpoint:j.endpoint,p_p256dh:j.keys.p256dh,p_auth:j.keys.auth}));}
+async function enablePush(){
+  const perm=await Notification.requestPermission();
+  if(perm!=="granted")throw new Error("PERM_DENIED");
+  const reg=await swReady();
+  let sub=await reg.pushManager.getSubscription();
+  if(!sub)sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64ToU8(VAPID_PUBLIC_KEY)});
+  await saveSub(sub);
+  S.pushOn=true;
+}
+async function disablePush(){const sub=await curSub();if(sub){try{must(await sb.rpc("remove_push_subscription",{p_endpoint:sub.endpoint}));}catch(e){console.warn(e);}await sub.unsubscribe();}S.pushOn=false;}
+async function dropServerSub(){try{const sub=await curSub();if(sub)must(await sb.rpc("remove_push_subscription",{p_endpoint:sub.endpoint}));}catch(e){console.warn(e);}}
+async function syncPush(){
+  try{
+    if(!pushOK||Notification.permission!=="granted"){S.pushOn=false;return;}
+    const sub=await curSub();
+    if(sub){await saveSub(sub);S.pushOn=true;}else S.pushOn=false;
+  }catch(e){console.warn("push sync",e);}
+}
 
 /* 이름 표시 */
 const pendingNames=new Set();
@@ -713,6 +755,48 @@ async function openDM(fid){
 }
 function dismissRequest(id){try{const d=dismissed();d.push(id);localStorage.setItem("dis:"+S.uid,JSON.stringify(d));}catch(e){}updateFriends();updateBadges();}
 
+function pushRow(){
+  const box=h("div");
+  const hint=t=>h("p",{class:"hint",style:"margin:0"},t);
+  const draw=()=>{
+    box.replaceChildren();
+    if(isIOS&&!isStandalone){
+      box.append(hint("아이폰·아이패드에서 앱을 꺼놔도 알림을 받으려면: 사파리 아래의 공유 버튼 → '홈 화면에 추가'로 설치하고, 홈 화면의 다정챗을 열어서 이곳에서 푸시 알림을 켜 주세요."));
+      return;
+    }
+    if(!pushOK){
+      if("Notification" in window&&Notification.permission==="default"){
+        const b=h("button",{class:"btn"},"브라우저 알림 켜기");
+        b.addEventListener("click",async()=>{const p=await Notification.requestPermission();toast(p==="granted"?"다른 탭을 보고 있을 때도 알림이 떠요":"알림을 허용하지 않았어요");if(p!=="default")b.remove();});
+        box.append(b);
+      }else box.append(hint("이 브라우저는 앱을 꺼놓았을 때 오는 푸시 알림을 지원하지 않아요."));
+      return;
+    }
+    if(Notification.permission==="denied"){
+      box.append(hint("알림이 막혀 있어요. 기기(브라우저) 설정에서 다정챗의 알림을 허용으로 바꾼 뒤 다시 시도해 주세요."));
+      return;
+    }
+    if(S.pushOn){
+      const test=h("button",{class:"btn"},"테스트 알림 보내기");
+      test.addEventListener("click",async()=>{
+        test.disabled=true;
+        try{must(await sb.rpc("send_test_push"));toast("몇 초 안에 알림이 와요");}catch(e){handleErr(e);}
+        setTimeout(()=>{if(test.isConnected)test.disabled=false;},4000);
+      });
+      const off=h("button",{class:"btn"},"푸시 끄기");
+      off.addEventListener("click",async()=>{off.disabled=true;try{await disablePush();toast("이 기기의 푸시 알림을 껐어요");}catch(e){handleErr(e);}draw();});
+      box.append(hint("이 기기에서 푸시 알림이 켜져 있어요. 앱을 닫아도 새 메시지·글·친구 요청이 알림으로 와요."),
+        h("div",{class:"row",style:"margin-top:10px;flex-wrap:wrap"},test,off));
+    }else{
+      const on=h("button",{class:"btn primary"},"푸시 알림 켜기");
+      on.addEventListener("click",async()=>{on.disabled=true;try{await enablePush();toast("푸시 알림을 켰어요");}catch(e){handleErr(e);}draw();});
+      box.append(hint("앱이나 브라우저를 닫아 놔도 새 메시지·글·친구 요청이 알림으로 와요."),h("div",{style:"margin-top:10px"},on));
+    }
+  };
+  draw();
+  refreshPushState().then(draw);
+  return box;
+}
 function viewFriends(main){
   const inp=h("input",{type:"text",placeholder:"친구 코드 6자리",maxlength:"6",autocapitalize:"characters",style:"text-transform:uppercase;letter-spacing:.1em"});
   const btn=h("button",{class:"btn primary"},"친구 추가");
@@ -727,12 +811,7 @@ function viewFriends(main){
     try{must(await sb.from("profiles").update({name:n}).eq("id",S.uid));S.me.name=n;S.names[S.uid]=n;toast("닉네임을 바꿨어요");}catch(e){handleErr(e);}
     nickBtn.disabled=false;
   });
-  let notiBtn=null;
-  if("Notification" in window&&Notification.permission==="default"){
-    notiBtn=h("button",{class:"btn"},"브라우저 알림 켜기");
-    notiBtn.addEventListener("click",async()=>{const p=await Notification.requestPermission();toast(p==="granted"?"다른 탭을 보고 있을 때도 알림이 떠요":"알림을 허용하지 않았어요");if(p!=="default")notiBtn.remove();});
-  }
-  const out=twoStep(h("button",{class:"btn danger"},"로그아웃"),"로그아웃",S.anon?"닉네임 계정은 로그아웃하면 다시 못 들어와요. 한 번 더 누르면 로그아웃":"한 번 더 누르면 로그아웃",()=>sb.auth.signOut());
+  const out=twoStep(h("button",{class:"btn danger"},"로그아웃"),"로그아웃",S.anon?"닉네임 계정은 로그아웃하면 다시 못 들어와요. 한 번 더 누르면 로그아웃":"한 번 더 누르면 로그아웃",async()=>{await dropServerSub();sb.auth.signOut();});
 
   main.append(h("div",{class:"head"},h("h1",{text:"친구"})),
     h("div",{class:"panel"},h("h2",{},"내 친구 코드"),h("div",{class:"mycode"},
@@ -741,8 +820,9 @@ function viewFriends(main){
     h("div",{id:"reqs"}),
     h("div",{class:"panel"},h("h2",{},"코드로 친구 추가"),h("div",{class:"row"},inp,btn)),
     h("div",{class:"panel"},h("h2",{id:"fcount"},"친구"),h("ul",{class:"friends",id:"flist"})),
+    h("div",{class:"panel"},h("h2",{},"알림"),pushRow()),
     h("div",{class:"panel"},h("h2",{},"내 정보"),h("div",{class:"row"},nick,nickBtn),
-      h("div",{class:"row",style:"margin-top:10px;flex-wrap:wrap"},notiBtn,out)));
+      h("div",{class:"row",style:"margin-top:10px;flex-wrap:wrap"},out)));
   updateFriends();
 }
 function updateFriends(){
@@ -791,7 +871,14 @@ async function onSession(session){
     if(!p){toast("프로필을 찾지 못했어요. 데이터베이스 설정(setup.sql)을 실행했는지 확인해 주세요.");S.started=false;await sb.auth.signOut();return;}
     S.me={name:p.name,code:p.code};S.names[S.uid]=p.name;
     startApp();
+    syncPush();
+    const q=new URLSearchParams(location.search).get("room");
+    if(q){try{history.replaceState(null,"",location.pathname);}catch(e){}go("chat",{name:"room",code:q});}
   }catch(e){handleErr(e);S.started=false;viewLogin();}
+}
+if("serviceWorker" in navigator){
+  navigator.serviceWorker.register("sw.js").catch(e=>console.warn("sw",e));
+  navigator.serviceWorker.addEventListener("message",ev=>{const d=ev.data;if(d&&d.type==="open-room"&&S.started&&d.room)go("chat",{name:"room",code:d.room});});
 }
 sb.auth.onAuthStateChange((event,session)=>{setTimeout(()=>onSession(session),0);});
 </script>
