@@ -228,6 +228,21 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--accent)}
 .snd-opt .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
 .vol{display:flex;align-items:center;gap:10px;margin:12px 0 4px}
 .vol input{flex:1;accent-color:var(--accent)}
+#toasts{z-index:60}
+.msgs-wrap{flex:1;min-height:0;position:relative;display:flex;flex-direction:column}
+.msgs-wrap .msgs{flex:1;min-height:0}
+.jump{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);z-index:3;border:0;border-radius:999px;padding:8px 16px;background:var(--accent);color:var(--accent-ink);font-weight:500;box-shadow:0 4px 14px rgba(0,0,0,.25);display:none}
+.jump.show{display:block}
+.bubble a.lnk,.body a.lnk,.c-text a.lnk,.nt a.lnk,.sn-t a.lnk{display:inline;color:inherit;text-decoration:underline;text-underline-offset:2px;word-break:break-all}
+.body a.lnk,.c-text a.lnk,.nt a.lnk,.sn-t a.lnk{color:var(--accent)}
+.lightbox{position:fixed;inset:0;z-index:40;background:rgba(0,0,0,.95);display:flex;flex-direction:column;padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}
+.lb-bar{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 14px;flex-wrap:wrap}
+.lb-bar .row{gap:8px;flex-wrap:wrap}
+.lb-bar button,.lb-bar a{color:#fff;background:rgba(255,255,255,.16);border:0;border-radius:999px;padding:8px 15px;font-size:14px;text-decoration:none;white-space:nowrap}
+.lb-bar .danger{color:#ff9a90}
+.lb-img{flex:1;min-height:0;display:grid;place-items:center;overflow:auto;padding:6px}
+.lb-img img{max-width:100%;max-height:100%;object-fit:contain;border-radius:6px}
+.bsearch{margin-bottom:10px}
 /* 게시판 */
 .posts{list-style:none;margin:0;padding:0;background:var(--surface);border-radius:12px;border:1px solid var(--line);overflow:hidden}
 .posts li+li{border-top:1px solid var(--line)}
@@ -471,7 +486,84 @@ function makeEmoPanel(panel,onPick){
   };
   return {open:()=>{panel.replaceChildren(h("p",{class:"hint",style:"margin:0"},"불러오는 중…"));loadEmo();}};
 }
-function photoLink(url,onload){const img=h("img",{src:url,alt:"사진",loading:"lazy"});if(onload)img.addEventListener("load",onload);return h("a",{href:url,target:"_blank",rel:"noopener"},img);}
+function photoLink(url,onload){
+  const img=h("img",{src:url,alt:"사진",loading:"lazy"});if(onload)img.addEventListener("load",onload);
+  const a=h("a",{href:url,target:"_blank",rel:"noopener"},img);
+  a.addEventListener("click",e=>{if(e.metaKey||e.ctrlKey||e.shiftKey)return;e.preventDefault();openLightbox(url);});
+  return a;
+}
+
+/* 글 속 주소(http, https)를 눌러서 열 수 있게 */
+function linkify(text){
+  const s=String(text==null?"":text),out=[];
+  const re=/https?:\/\/[\w\-._~:\/?#\[\]@!$&()*+,;=%]+/gi;
+  let last=0,m;
+  while((m=re.exec(s))){
+    let url=m[0],tail="";
+    while(url.length>8){
+      const c=url[url.length-1];
+      const extraClose=c===")"&&url.split(")").length>url.split("(").length;
+      if(".,!?;:]".includes(c)||extraClose){tail=c+tail;url=url.slice(0,-1);}else break;
+    }
+    if(m.index>last)out.push(s.slice(last,m.index));
+    if(url.length>8)out.push(h("a",{class:"lnk",href:url,target:"_blank",rel:"noopener noreferrer"},url));else out.push(url);
+    if(tail)out.push(tail);
+    last=m.index+m[0].length;
+  }
+  if(last<s.length)out.push(s.slice(last));
+  return out.length?out:[s];
+}
+
+/* 사진 크게 보기 (앱 안에서, 뒤로가기로 닫혀요) */
+let lbFinish=null;
+function openLightbox(url,opts){
+  if(lbFinish)return;
+  opts=opts||{};
+  const back=h("div",{class:"lightbox",role:"dialog","aria-modal":"true","aria-label":"사진 크게 보기"});
+  const onKey=e=>{if(e.key==="Escape")requestClose();};
+  let pushed=false;
+  lbFinish=()=>{back.remove();document.removeEventListener("keydown",onKey);lbFinish=null;};
+  const requestClose=()=>{
+    if(!lbFinish)return;
+    if(pushed){pushed=false;try{history.back();setTimeout(()=>{if(lbFinish)lbFinish();},350);return;}catch(e){}}
+    lbFinish();
+  };
+  try{history.pushState({dj:1,lb:1,tab:S.tab,view:S.view},"");pushed=true;}catch(e){}
+  const closeBtn=h("button",{"aria-label":"닫기"},"✕ 닫기");
+  closeBtn.addEventListener("click",requestClose);
+  const copyBtn=h("button",{},"링크 복사");copyBtn.addEventListener("click",()=>copyText(url));
+  const openA=h("a",{href:url,target:"_blank",rel:"noopener"},"원본 열기");
+  const extras=[];
+  if(opts.del){
+    extras.push(twoStep(h("button",{class:"danger"},"삭제"),"삭제","한 번 더 누르면 삭제",async()=>{
+      const ok=await opts.del();if(ok)requestClose();
+    }));
+  }
+  const imgBox=h("div",{class:"lb-img"},h("img",{src:url,alt:"사진"}));
+  imgBox.addEventListener("click",e=>{if(e.target===imgBox)requestClose();});
+  back.append(h("div",{class:"lb-bar"},closeBtn,h("div",{class:"row"},copyBtn,openA,extras)),imgBox);
+  document.addEventListener("keydown",onKey);
+  document.body.append(back);
+  closeBtn.focus();
+}
+
+/* 뒤로가기 버튼, 스와이프로 앞 화면으로 돌아가기 */
+function pushNav(){
+  try{
+    const st={dj:1,tab:S.tab,view:S.view};
+    const cur=history.state;
+    if(cur&&cur.dj&&!cur.lb){
+      if(JSON.stringify([cur.tab,cur.view])===JSON.stringify([st.tab,st.view]))return;
+      history.pushState(st,"");
+    }else history.replaceState(st,"");
+  }catch(e){}
+}
+window.addEventListener("popstate",e=>{
+  if(lbFinish){lbFinish();return;}
+  const st=e.state;
+  if(!S.started||!st||!st.dj||st.lb)return;
+  go(st.tab,st.view,{noPush:true,keepScroll:true});
+});
 function twoStep(btn,label,armedLabel,action){
   let armed=false;
   btn.addEventListener("click",()=>{
@@ -681,9 +773,11 @@ function renderNav(show){
   updateBadges();
 }
 function clearCur(){for(const c of S.cur.channels)sb.removeChannel(c);S.cur={channels:[]};}
-function go(tab,view){
+function go(tab,view,opts){
   clearCur();S.tab=tab;S.view=view||{name:"list"};
-  renderNav(true);renderView();window.scrollTo(0,0);
+  renderNav(true);renderView();
+  if(!(opts&&opts.keepScroll))window.scrollTo(0,0);
+  if(!(opts&&opts.noPush))pushNav();
 }
 function renderView(){
   const main=$("#main");main.replaceChildren();
@@ -788,6 +882,8 @@ async function loadPosts(){
 }
 function boardSort(){try{return localStorage.getItem("boardSort")||"new";}catch(e){return "new";}}
 function viewBoard(main){
+  const bsearch=h("input",{type:"text",class:"bsearch",placeholder:"🔍 제목이나 글쓴이로 찾기",value:S.boardQ||"",enterkeyhint:"search","aria-label":"게시글 검색"});
+  bsearch.addEventListener("input",async()=>{S.boardQ=bsearch.value;await fillNamesFor(S.posts.map(p=>p.author));updatePostList();});
   const sorts=h("div",{class:"sorts",role:"group","aria-label":"정렬"});
   const drawSorts=()=>{
     const cur=boardSort();
@@ -796,7 +892,7 @@ function viewBoard(main){
   };
   drawSorts();
   main.append(h("div",{class:"head"},h("h1",{text:"게시판"}),h("button",{class:"btn primary",onclick:()=>go("board",{name:"write"})},"글쓰기")),
-    sorts,h("ul",{class:"posts",id:"postlist"}));
+    bsearch,sorts,h("ul",{class:"posts",id:"postlist"}));
   updatePostList();
 }
 function updatePostList(){
@@ -806,8 +902,11 @@ function updatePostList(){
   const mode=boardSort();
   const t=p=>ms(p.created_at);
   // 공지글은 정렬과 상관없이 항상 맨 위에
-  const pins=S.posts.filter(p=>p.pinned).sort((a,b)=>ms(b.pinned_at||b.created_at)-ms(a.pinned_at||a.created_at));
-  const list=S.posts.filter(p=>!p.pinned);
+  const q=(S.boardQ||"").trim().toLowerCase();
+  const match=p=>!q||(p.title||"").toLowerCase().includes(q)||(S.names[p.author]||"").toLowerCase().includes(q);
+  const pins=S.posts.filter(p=>p.pinned&&match(p)).sort((a,b)=>ms(b.pinned_at||b.created_at)-ms(a.pinned_at||a.created_at));
+  const list=S.posts.filter(p=>!p.pinned&&match(p));
+  if(!pins.length&&!list.length){ul.append(h("li",{class:"empty"},"검색 결과가 없어요."));return;}
   if(mode==="likes")list.sort((a,b)=>(b.likeN||0)-(a.likeN||0)||t(b)-t(a));
   else if(mode==="comments")list.sort((a,b)=>(b.cmtN||0)-(a.cmtN||0)||t(b)-t(a));
   for(const p of [...pins,...list]){
@@ -820,6 +919,10 @@ function updatePostList(){
 function viewWrite(main){
   const title=h("input",{type:"text",placeholder:"제목",maxlength:"100"});
   const body=h("textarea",{placeholder:"내용을 입력하세요",maxlength:"5000"});
+  const pdk="draft:post:"+S.uid;
+  try{const d=JSON.parse(localStorage.getItem(pdk)||"null");if(d&&(d.t||d.b)){title.value=d.t||"";body.value=d.b||"";setTimeout(()=>toast("쓰던 글을 불러왔어요"),200);}}catch(e){}
+  const saveDraftPost=()=>{try{if(title.value.trim()||body.value.trim())localStorage.setItem(pdk,JSON.stringify({t:title.value,b:body.value}));else localStorage.removeItem(pdk);}catch(e){}};
+  title.addEventListener("input",saveDraftPost);body.addEventListener("input",saveDraftPost);
   const btn=h("button",{class:"btn primary"},"등록");
   const images=[];let uploading=0;
   const thumbs=h("div",{class:"thumbs"});
@@ -842,6 +945,7 @@ function viewWrite(main){
     if(uploading){toast("사진을 올리는 중이에요. 잠시만 기다려 주세요.");return;}
     btn.disabled=true;
     try{const row=must(await sb.from("posts").insert(images.length?{title:t.slice(0,100),body:b.slice(0,5000),images:images.slice(0,4)}:{title:t.slice(0,100),body:b.slice(0,5000)}).select("id").single());
+      try{localStorage.removeItem(pdk);}catch(e){}
       if(S.admin&&pinChk.checked){try{must(await sb.rpc("admin_pin_post",{p_post:row.id,p_pin:true}));}catch(e){handleErr(e);}}
       toast(S.admin&&pinChk.checked?"공지로 올렸어요":"글을 등록했어요");loadPosts();go("board",{name:"post",id:row.id});}
     catch(e){handleErr(e);btn.disabled=false;}
@@ -849,7 +953,7 @@ function viewWrite(main){
   const pinChk=h("input",{type:"checkbox"});
   main.append(h("div",{class:"head"},h("h1",{text:"글쓰기"})),
     h("div",{class:"write"},title,body,thumbs,
-      S.admin?h("label",{class:"check",style:"margin:0"},pinChk,"📌 공지로 올리기 (게시판 맨 위에 항상 고정)"):null,h("div",{class:"row",style:"justify-content:space-between"},addBtn,h("div",{class:"row"},h("button",{class:"btn",onclick:()=>go("board")},"취소"),btn))));
+      S.admin?h("label",{class:"check",style:"margin:0"},pinChk,"📌 공지로 올리기 (게시판 맨 위에 항상 고정)"):null,h("div",{class:"row",style:"justify-content:space-between"},addBtn,h("div",{class:"row"},h("button",{class:"btn",onclick:()=>{try{localStorage.removeItem(pdk);}catch(e){}go("board");}},"취소"),btn))));
   title.focus();
 }
 function viewPost(main,id){
@@ -883,7 +987,7 @@ function viewPost(main,id){
       try{must(await sb.rpc("admin_pin_post",{p_post:id,p_pin:!post.pinned}));toast(post.pinned?"공지에서 내렸어요":"공지로 고정했어요");await loadPost();loadPosts();}
       catch(e){handleErr(e);pinBtn.disabled=false;}});
     art.replaceChildren(post.pinned?h("span",{class:"pin-tag"},"📌 공지"):null,h("h1",{},post.title),h("div",{class:"pm"},nameSpan(post.author),h("span",{},fmt(post.created_at))),
-      h("div",{class:"body"},post.body||""),
+      h("div",{class:"body"},linkify(post.body||"")),
       post.images&&post.images.length?h("div",{class:"imgs"},post.images.map(u=>photoLink(u))):null,
       h("div",{class:"post-actions"},likeBtn,pinBtn,del));
     fillNames();
@@ -897,7 +1001,7 @@ function viewPost(main,id){
       cList.replaceChildren(...cs.map(c=>h("li",{},
         h("div",{class:"c-meta"},nameSpan(c.author),h("span",{},fmt(c.created_at)),
           (c.author===S.uid||S.admin)?h("button",{class:"link",onclick:async()=>{try{must(await sb.from("comments").delete().eq("id",c.id));loadComments();}catch(e){handleErr(e);}}},"삭제"):null),
-        c.sticker_url?h("img",{class:"c-sticker",src:c.sticker_url,alt:"이모티콘",loading:"lazy"}):h("div",{class:"c-text"},c.text))));
+        c.sticker_url?h("img",{class:"c-sticker",src:c.sticker_url,alt:"이모티콘",loading:"lazy"}):h("div",{class:"c-text"},linkify(c.text)))));
       fillNames();
     }catch(e){console.warn(e);}
   };
@@ -1109,11 +1213,16 @@ function viewRoom(main,code){
   const emoBtn=h("button",{class:"attach",title:"이모티콘","aria-label":"이모티콘"},"😊");
   const emoPanel=h("div",{class:"emo-panel",style:"display:none"});
   S.cur.msgs=[];S.cur.memberCount=null;S.cur.sel=null;
-  const addMsgs=rows=>{const have=new Set(S.cur.msgs.map(m=>m.id));for(const r of rows)if(!have.has(r.id))S.cur.msgs.push(r);S.cur.msgs.sort((a,b)=>ms(a.created_at)-ms(b.created_at)||a.id-b.id);renderMsgs();};
+  const addMsgs=rows=>{const have=new Set(S.cur.msgs.map(m=>m.id));for(const r of rows)if(!have.has(r.id)){S.cur.msgs.push(r);if(r.author===S.uid)S.cur.forceBottom=true;}S.cur.msgs.sort((a,b)=>ms(a.created_at)-ms(b.created_at)||a.id-b.id);renderMsgs();};
+  const dkey="draft:"+S.uid+":"+code;
+  const autoGrow=()=>{input.style.height="auto";input.style.height=Math.min(input.scrollHeight,120)+"px";};
+  const saveDraft=()=>{try{if(input.value.trim())localStorage.setItem(dkey,input.value);else localStorage.removeItem(dkey);}catch(e){}};
+  try{const d=localStorage.getItem(dkey);if(d){input.value=d;setTimeout(autoGrow,0);}}catch(e){}
+  input.addEventListener("input",()=>{autoGrow();saveDraft();});
   const send=async()=>{
-    const t=input.value.trim().slice(0,2000);if(!t)return;input.value="";
+    const t=input.value.trim().slice(0,2000);if(!t)return;input.value="";saveDraft();autoGrow();
     try{const row=must(await sb.from("messages").insert({room_id:code,text:t}).select("*").single());addMsgs([row]);}
-    catch(e){handleErr(e);input.value=t;}
+    catch(e){handleErr(e);input.value=t;saveDraft();autoGrow();}
     input.focus();
   };
   input.addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey&&!e.isComposing){e.preventDefault();send();}});
@@ -1138,7 +1247,10 @@ function viewRoom(main,code){
     emoPanel.style.display=open?"":"none";emoBtn.setAttribute("aria-pressed",String(open));
     if(open)emo.open();
   });
-  main.append(h("div",{class:"room"},head,noticeBox,memberBox,list,emoPanel,h("div",{class:"composer"},photoBtn,emoBtn,input,sendBtn)));
+  const jump=h("button",{class:"jump",id:"jumpnew"},"↓ 새 메시지");
+  jump.addEventListener("click",()=>{list.scrollTo({top:list.scrollHeight,behavior:"smooth"});jump.classList.remove("show");});
+  list.addEventListener("scroll",()=>{if(list.scrollHeight-list.scrollTop-list.clientHeight<80)jump.classList.remove("show");},{passive:true});
+  main.append(h("div",{class:"room"},head,noticeBox,memberBox,h("div",{class:"msgs-wrap"},list,jump),emoPanel,h("div",{class:"composer"},photoBtn,emoBtn,input,sendBtn)));
   list.addEventListener("click",e=>{if(!e.target.closest(".bubble")&&!e.target.closest(".acts")&&S.cur.sel!=null){S.cur.sel=null;renderMsgs();}});
   updateRoomHead();
 
@@ -1192,9 +1304,9 @@ function drawNotice(){
   const r=S.rooms[S.view.code];
   if(!r||!r.notice){box.replaceChildren();box.className="";return;}
   box.className="notice";
-  const nt=h("div",{class:"nt"},r.notice);
+  const nt=h("div",{class:"nt"},linkify(r.notice));
   box.replaceChildren(h("span",{class:"nb"},"📢 공지"),nt);
-  box.onclick=()=>box.classList.toggle("open");
+  box.onclick=e=>{if(e.target.closest&&e.target.closest("a"))return;box.classList.toggle("open");};
 }
 function toggleMembers(){
   const box=$("#roommembers");if(!box)return;
@@ -1280,9 +1392,14 @@ function updateRoomHead(){
   drawNotice();
   fillNames();
 }
+async function deleteMsg(m){
+  try{must(await sb.from("messages").delete().eq("id",m.id));S.cur.msgs=S.cur.msgs.filter(x=>x.id!==m.id);S.cur.sel=null;renderMsgs();return true;}
+  catch(e){handleErr(e);return false;}
+}
 function renderMsgs(){
   const box=$("#msgs");if(!box)return;
-  const atBottom=box.scrollHeight-box.scrollTop-box.clientHeight<80||!box.dataset.init;
+  const atBottom=!!S.cur.forceBottom||box.scrollHeight-box.scrollTop-box.clientHeight<80||!box.dataset.init;
+  S.cur.forceBottom=false;
   const stick=atBottom;const prevTop=box.scrollTop;
   box.replaceChildren();
   const list=S.cur.msgs||[];
@@ -1298,17 +1415,24 @@ function renderMsgs(){
     const bubble=m.sticker_url
       ?h("div",{class:"bubble sticker"+(sel?" sel":"")},h("img",{src:m.sticker_url,alt:"이모티콘",loading:"lazy",onload:onImg}))
       :m.image_url
-      ?h("div",{class:"bubble photo"+(sel?" sel":"")},h("img",{src:m.image_url,alt:"사진",loading:"lazy",onload:onImg}),m.text?h("div",{class:"cap"},m.text):null)
-      :h("div",{class:"bubble"+(sel?" sel":"")},m.text);
-    bubble.addEventListener("click",()=>{S.cur.sel=sel?null:m.id;renderMsgs();});
+      ?h("div",{class:"bubble photo"+(sel?" sel":"")},h("img",{src:m.image_url,alt:"사진",loading:"lazy",onload:onImg}),m.text?h("div",{class:"cap"},linkify(m.text)):null)
+      :h("div",{class:"bubble"+(sel?" sel":"")},linkify(m.text));
+    bubble.addEventListener("click",e=>{
+      if(e.target.closest&&e.target.closest("a"))return;
+      if(m.image_url&&!m.sticker_url){
+        const canDel=me||S.admin||isOwnerOf(S.view.code,S.uid);
+        openLightbox(m.image_url,{del:canDel?()=>deleteMsg(m):null});
+        return;
+      }
+      S.cur.sel=sel?null:m.id;renderMsgs();
+    });
     box.append(h("div",{class:"line"+(me?" me":"")},bubble,h("span",{class:"tm"},hmOnly(m.created_at))));
     if(sel){
       const acts=[];
-      if(m.image_url)acts.push(h("button",{onclick:()=>window.open(m.image_url,"_blank","noopener")},"크게 보기"));
       if(!m.sticker_url&&m.text)acts.push(h("button",{onclick:()=>{copyText(m.text);S.cur.sel=null;renderMsgs();}},"복사"));
       if(m.image_url)acts.push(h("button",{onclick:()=>{copyText(m.image_url);S.cur.sel=null;renderMsgs();}},"사진 링크 복사"));
       if(me||S.admin||isOwnerOf(S.view.code,S.uid))acts.push(twoStep(h("button",{class:"danger"},"삭제"),"삭제","한 번 더 누르면 삭제",async()=>{
-        try{must(await sb.from("messages").delete().eq("id",m.id));S.cur.msgs=S.cur.msgs.filter(x=>x.id!==m.id);S.cur.sel=null;renderMsgs();}catch(e){handleErr(e);}
+        await deleteMsg(m);
       }));
       if(acts.length)box.append(h("div",{class:"acts"+(me?" me":"")},acts));
     }
@@ -1316,6 +1440,12 @@ function renderMsgs(){
   }
   if(atBottom)box.scrollTop=box.scrollHeight;else box.scrollTop=prevTop;
   box.dataset.init="1";
+  const jump=$("#jumpnew"),n=list.length;
+  if(jump){
+    if(atBottom)jump.classList.remove("show");
+    else if(S.cur.renderedN!=null&&n>S.cur.renderedN&&list[n-1].author!==S.uid)jump.classList.add("show");
+  }
+  S.cur.renderedN=n;
   fillNames();
 }
 
@@ -1428,7 +1558,7 @@ function drawSiteNotice(){
   let hidden=false;try{hidden=!!n&&localStorage.getItem("snhide")===n.updated_at;}catch(e){}
   if(!n||hidden){box.replaceChildren();return;}
   const wrap=h("div",{class:"snote",role:"note"});
-  const t=h("div",{class:"sn-t",title:"눌러서 펼치기"},n.text,h("span",{class:"sn-d"},"관리자 공지 · "+fmt(n.updated_at)));
+  const t=h("div",{class:"sn-t",title:"눌러서 펼치기"},linkify(n.text),h("span",{class:"sn-d"},"관리자 공지 · "+fmt(n.updated_at)));
   t.addEventListener("click",()=>wrap.classList.toggle("open"));
   const x=h("button",{class:"sn-x",title:"이 공지 닫기","aria-label":"이 공지 닫기"},"×");
   x.addEventListener("click",()=>{try{localStorage.setItem("snhide",n.updated_at);}catch(e){}drawSiteNotice();});
