@@ -221,6 +221,13 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--accent)}
 .post-row.pinned .pt{font-weight:700}
 .pin-tag{display:inline-block;font-size:12px;font-weight:700;color:var(--accent-ink);background:var(--accent);border-radius:6px;padding:1px 7px;margin-right:6px;vertical-align:2px}
 .post .pin-tag{font-size:13px;margin-bottom:8px}
+.sndlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;margin-top:6px}
+.snd-opt{border:2px solid var(--line);background:var(--surface);color:var(--ink);border-radius:12px;padding:9px 10px;display:flex;align-items:center;gap:8px;text-align:left}
+.snd-opt[aria-pressed="true"]{border-color:var(--accent);background:var(--chip)}
+.snd-opt .pl{font-size:13px;color:var(--accent);flex:none}
+.snd-opt .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
+.vol{display:flex;align-items:center;gap:10px;margin:12px 0 4px}
+.vol input{flex:1;accent-color:var(--accent)}
 /* 게시판 */
 .posts{list-style:none;margin:0;padding:0;background:var(--surface);border-radius:12px;border:1px solid var(--line);overflow:hidden}
 .posts li+li{border-top:1px solid var(--line)}
@@ -477,9 +484,55 @@ function twoStep(btn,label,armedLabel,action){
 /* 알림음 / 시스템 알림 */
 let actx=null;
 document.addEventListener("pointerdown",()=>{try{if(!actx)actx=new (window.AudioContext||window.webkitAudioContext)();if(actx.state==="suspended")actx.resume();}catch(e){}});
-function beep(){if(!S.sound||!actx)return;try{const o=actx.createOscillator(),g=actx.createGain(),t=actx.currentTime;o.type="sine";o.frequency.setValueAtTime(784,t);o.frequency.setValueAtTime(1047,t+.09);g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(.18,t+.01);g.gain.exponentialRampToValueAtTime(.0001,t+.28);o.connect(g).connect(actx.destination);o.start(t);o.stop(t+.3);}catch(e){}}
+/* 알림음 종류 (직접 만든 소리 + 내가 올린 소리) */
+const SOUNDS=[["ding","띠링"],["dingdong","띵동"],["chime","맑은 종소리"],["pop","뿅"],["drop","물방울"],["knock","똑똑"],["soft","부드럽게"]];
+S.soundName=(()=>{try{return localStorage.getItem("soundName")||"ding";}catch(e){return "ding";}})();
+S.soundVol=(()=>{try{const v=parseFloat(localStorage.getItem("soundVol"));return isNaN(v)?0.7:Math.min(1,Math.max(0,v));}catch(e){return 0.7;}})();
+let customBuf=null,customTried=false;
+function ensureCtx(){try{if(!actx)actx=new (window.AudioContext||window.webkitAudioContext)();if(actx.state==="suspended")actx.resume();}catch(e){}return actx;}
+function customData(){try{return localStorage.getItem("soundCustom");}catch(e){return null;}}
+async function loadCustom(){
+  if(customBuf||customTried)return customBuf;
+  customTried=true;
+  const d=customData();if(!d||!ensureCtx())return null;
+  try{const ab=await (await fetch(d)).arrayBuffer();customBuf=await new Promise((ok,no)=>actx.decodeAudioData(ab,ok,no));}catch(e){customBuf=null;}
+  return customBuf;
+}
+function tone(f,t0,dur,type,peak,f2){
+  const o=actx.createOscillator(),g=actx.createGain();
+  o.type=type||"sine";o.frequency.setValueAtTime(f,t0);if(f2)o.frequency.exponentialRampToValueAtTime(f2,t0+dur);
+  g.gain.setValueAtTime(.0001,t0);g.gain.exponentialRampToValueAtTime(Math.max(.0002,peak),t0+.012);g.gain.exponentialRampToValueAtTime(.0001,t0+dur);
+  o.connect(g).connect(actx.destination);o.start(t0);o.stop(t0+dur+.03);
+}
+function synth(name,v){
+  const t=actx.currentTime+.01;
+  switch(name){
+    case "dingdong":tone(880,t,.35,"sine",.30*v);tone(659,t+.22,.55,"sine",.30*v);break;
+    case "chime":[523,659,784].forEach((f,i)=>{tone(f,t+i*.11,.55,"sine",.24*v);tone(f*2,t+i*.11,.35,"sine",.06*v);});break;
+    case "pop":tone(380,t,.16,"triangle",.34*v,980);break;
+    case "drop":tone(1250,t,.22,"sine",.34*v,380);tone(900,t+.1,.18,"sine",.12*v,300);break;
+    case "knock":tone(190,t,.09,"triangle",.5*v,110);tone(190,t+.14,.09,"triangle",.5*v,110);break;
+    case "soft":tone(523,t,.75,"sine",.22*v);tone(784,t+.05,.7,"sine",.10*v);break;
+    default:tone(784,t,.14,"sine",.32*v);tone(1047,t+.09,.28,"sine",.32*v);
+  }
+}
+async function playSound(name,vol){
+  if(!ensureCtx())return;
+  const v=Math.max(0.02,vol==null?S.soundVol:vol);
+  try{
+    if(name==="custom"){
+      const buf=await loadCustom();
+      if(!buf){synth("ding",v);return;}
+      const src=actx.createBufferSource(),g=actx.createGain();
+      src.buffer=buf;g.gain.value=Math.min(1,v*1.2);src.connect(g).connect(actx.destination);
+      const t=actx.currentTime;src.start(t);src.stop(t+Math.min(buf.duration,5));
+    }else synth(name,v);
+  }catch(e){}
+}
+function beep(){if(!S.sound||!actx)return;playSound(S.soundName==="custom"&&!customData()?"ding":S.soundName);}
+function dataUrl2buf(d){const b=atob(d.split(",")[1]);const u=new Uint8Array(b.length);for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i);return u.buffer;}
 function renderSound(){const b=$("#sound");b.textContent=S.sound?"🔔":"🔕";b.setAttribute("aria-pressed",String(S.sound));}
-$("#sound").addEventListener("click",()=>{S.sound=!S.sound;try{localStorage.setItem("sound",S.sound?"on":"off")}catch(e){}renderSound();toast(S.sound?"알림음을 켰어요":"알림음을 껐어요");});
+$("#sound").addEventListener("click",()=>{S.sound=!S.sound;try{localStorage.setItem("sound",S.sound?"on":"off")}catch(e){}renderSound();toast(S.sound?"알림음을 켰어요":"알림음을 껐어요");if(S.sound)playSound(S.soundName);});
 renderSound();
 function sysNotify(title,body){try{if(S.pushOn)return;if(document.hidden&&"Notification" in window&&Notification.permission==="granted")new Notification(title,{body,tag:"dajeong"});}catch(e){}}
 
@@ -1485,6 +1538,57 @@ function viewSettings(main){
   soundBtn.addEventListener("click",()=>{S.sound=!S.sound;try{localStorage.setItem("sound",S.sound?"on":"off")}catch(e){}renderSound();drawSound();});
   drawSound();
 
+  // 알림음 고르기
+  const sndBox=h("div",{class:"sndlist",role:"group","aria-label":"알림음 고르기"});
+  const sndName=n=>n==="custom"?"내가 올린 소리":(SOUNDS.find(x=>x[0]===n)||[0,"띠링"])[1];
+  const drawSnds=()=>{
+    const all=[...SOUNDS];
+    if(customData())all.push(["custom","내가 올린 소리"]);
+    sndBox.replaceChildren(...all.map(([k,l])=>{
+      const b=h("button",{class:"snd-opt","aria-pressed":String(S.soundName===k)},h("span",{class:"pl","aria-hidden":"true"},"▶"),h("span",{class:"nm"},l));
+      b.addEventListener("click",()=>{
+        S.soundName=k;try{localStorage.setItem("soundName",k);}catch(e){}
+        playSound(k);drawSnds();
+      });
+      return b;
+    }));
+  };
+  drawSnds();
+  const vol=h("input",{type:"range",min:"0",max:"100",step:"5",value:String(Math.round(S.soundVol*100)),"aria-label":"알림음 크기"});
+  vol.addEventListener("input",()=>{S.soundVol=vol.value/100;try{localStorage.setItem("soundVol",String(S.soundVol));}catch(e){}});
+  vol.addEventListener("change",()=>playSound(S.soundName));
+  const upBtn=h("button",{class:"btn"},"내 소리 올리기");
+  const rmBtn=h("button",{class:"btn danger"},"올린 소리 지우기");
+  const drawCustomBtns=()=>{rmBtn.style.display=customData()?"":"none";};
+  upBtn.addEventListener("click",()=>{
+    const inp=h("input",{type:"file",accept:"audio/*",style:"display:none"});
+    inp.addEventListener("change",async()=>{
+      const f=inp.files[0];inp.remove();if(!f)return;
+      if(f.size>700*1024){toast("소리 파일이 너무 커요. 700KB 이하로 골라 주세요.");return;}
+      upBtn.disabled=true;
+      try{
+        const dataUrl=await new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(r.result);r.onerror=no;r.readAsDataURL(f);});
+        if(!ensureCtx())throw new Error("noctx");
+        const buf=await new Promise((ok,no)=>actx.decodeAudioData(dataUrl2buf(dataUrl),ok,no));
+        if(buf.duration>30){toast("30초 이하의 짧은 소리만 쓸 수 있어요.");upBtn.disabled=false;return;}
+        localStorage.setItem("soundCustom",dataUrl);
+        customBuf=buf;customTried=true;
+        S.soundName="custom";localStorage.setItem("soundName","custom");
+        toast("내 소리를 알림음으로 썼어요. 앞부분 5초까지만 재생돼요.");
+        playSound("custom");drawSnds();drawCustomBtns();
+      }catch(e){console.warn(e);toast("이 소리 파일은 쓸 수 없어요. mp3나 m4a 같은 다른 파일로 해 보세요.");}
+      upBtn.disabled=false;
+    });
+    document.body.append(inp);inp.click();
+  });
+  rmBtn.addEventListener("click",()=>{
+    try{localStorage.removeItem("soundCustom");}catch(e){}
+    customBuf=null;customTried=false;
+    if(S.soundName==="custom"){S.soundName="ding";try{localStorage.setItem("soundName","ding");}catch(e){}}
+    toast("올린 소리를 지웠어요");drawSnds();drawCustomBtns();
+  });
+  drawCustomBtns();
+
   const mutedRooms=h("ul",{class:"publist"});
   const drawMuted=()=>{
     const list=[...(S.mutes||[])].filter(c=>S.rooms[c]);
@@ -1521,6 +1625,10 @@ function viewSettings(main){
     h("div",{class:"panel"},h("h2",{},"푸시 알림"),pushRow()),
     h("div",{class:"panel"},h("h2",{},"앱 안 알림"),
       h("div",{class:"setrow"},h("span",{},"알림음"),soundBtn),
+      h("h2",{style:"margin:12px 0 4px"},"알림음 고르기"),sndBox,
+      h("div",{class:"vol"},h("span",{"aria-hidden":"true"},"🔈"),vol,h("span",{"aria-hidden":"true"},"🔊")),
+      h("div",{class:"row",style:"margin-top:8px;flex-wrap:wrap"},upBtn,rmBtn),
+      h("p",{class:"hint"},"앱을 보고 있을 때 나는 소리예요. 앱을 닫았을 때 오는 푸시 알림 소리는 기기 설정을 따라가요. 기기가 무음 모드면 소리가 안 날 수 있어요."),
       h("h2",{style:"margin:12px 0 4px"},"알림 끈 채팅방"),mutedRooms),
     h("div",{class:"panel"},h("h2",{},"도움말"),
       h("p",{class:"hint",style:"margin:0 0 10px"},"다정챗 사용법을 처음부터 다시 볼 수 있어요."),
