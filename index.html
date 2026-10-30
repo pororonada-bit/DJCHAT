@@ -369,6 +369,15 @@ input[type=text]:focus,input[type=email]:focus,input[type=password]:focus,textar
 .emo-new{padding:10px;border-radius:14px;background:var(--bg);margin-bottom:8px}
 .emo-empty{color:var(--muted);font-size:14px;text-align:center;padding:22px 8px;margin:0}
 @media (prefers-reduced-motion:reduce){.emo.sent{animation:none}.btn,.emo{transition:none}}
+/* 멘션 */
+.mention-pop{list-style:none;margin:0;padding:6px;display:flex;flex-direction:column;gap:2px;max-height:min(210px,34dvh);overflow-y:auto;border-top:1px solid var(--line);background:var(--surface)}
+.mention-pop[hidden]{display:none}
+.mention-pop button{width:100%;display:flex;align-items:center;gap:10px;border:0;background:none;padding:7px 10px;border-radius:10px;text-align:left}
+.mention-pop button:hover,.mention-pop button:focus-visible{background:var(--chip)}
+.mention-pop .av{width:28px;height:28px;font-size:13px}
+.bubble .mt{font-weight:700;color:var(--accent);background:var(--chip);border-radius:5px;padding:0 3px}
+.me .bubble .mt{color:inherit;background:rgba(255,255,255,.22);text-decoration:underline;text-underline-offset:3px}
+.bubble.ping{box-shadow:0 0 0 2px var(--accent)}
 </style>
 </head>
 <body>
@@ -450,6 +459,7 @@ function handleErr(e){
   else if(/emoticons|sticker_url|sticker_check/i.test(m))toast("이모티콘 설정이 필요해요. add-emoticons.sql을 실행해 주세요.");
   else if(m==="NOT_IMAGE")toast("이 파일은 사진으로 올릴 수 없어요.");
   else if(m==="TOO_BIG"||/exceeded the maximum|too large/i.test(m))toast("사진이 너무 커요. 5MB 이하로 올려 주세요.");
+  else if(/mentions/i.test(m))toast("멘션 설정이 필요해요. add-mentions.sql을 실행해 주세요.");
   else if(/images_check|content_check|column .* does not exist/i.test(m))toast("사진 기능 설정이 필요해요. add-photos.sql을 실행해 주세요.");
   else if(m==="PERM_DENIED")toast("알림이 허용되지 않았어요. 기기(브라우저) 설정에서 알림을 허용해 주세요.");
   else if(m==="SW_FAIL")toast("알림 준비에 실패했어요. sw.js 파일이 index.html과 같은 곳에 올라가 있는지 확인해 주세요.");
@@ -614,6 +624,30 @@ function photoLink(url,onload){
   return a;
 }
 
+/* 멘션: 글 속 @이름 찾기 / 강조 */
+const escRe=t=>t.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+function findMentions(text){
+  let t=String(text||"");const out=[];
+  const cand=(S.cur.members||[]).filter(u=>u!==S.uid&&S.names[u]).sort((a,b)=>S.names[b].length-S.names[a].length);
+  for(const u of cand){
+    const re=new RegExp("(^|\\s)@"+escRe(S.names[u]));
+    if(re.test(t)){out.push(u);t=t.replace(re,"$1 ");}
+  }
+  return out.slice(0,10);
+}
+function withMentions(text,m){
+  const t=String(text==null?"":text);
+  const names=((m&&m.mentions)||[]).map(u=>S.names[u]).filter(Boolean).sort((a,b)=>b.length-a.length);
+  if(!names.length)return linkify(t);
+  const re=new RegExp("@("+names.map(escRe).join("|")+")","g"),out=[];
+  let last=0,x;
+  while((x=re.exec(t))){
+    if(x.index>last)out.push(...linkify(t.slice(last,x.index)));
+    out.push(h("span",{class:"mt"},x[0]));last=x.index+x[0].length;
+  }
+  if(last<t.length)out.push(...linkify(t.slice(last)));
+  return out.length?out:linkify(t);
+}
 /* 글 속 주소(http, https)를 눌러서 열 수 있게 */
 function linkify(text){
   const s=String(text==null?"":text),out=[];
@@ -1341,13 +1375,44 @@ function viewRoom(main,code){
   try{const d=localStorage.getItem(dkey);if(d){input.value=d;setTimeout(autoGrow,0);}}catch(e){}
   input.addEventListener("input",()=>{autoGrow();saveDraft();});
   const send=async()=>{
-    const t=input.value.trim().slice(0,2000);if(!t)return;input.value="";saveDraft();autoGrow();
-    try{const row=must(await sb.from("messages").insert({room_id:code,text:t}).select("*").single());addMsgs([row]);}
+    const t=input.value.trim().slice(0,2000);if(!t)return;input.value="";saveDraft();autoGrow();hideMention();
+    await fillNamesFor(S.cur.members||[]);const men=findMentions(t);
+    try{const row=must(await sb.from("messages").insert(men.length?{room_id:code,text:t,mentions:men}:{room_id:code,text:t}).select("*").single());addMsgs([row]);}
     catch(e){handleErr(e);input.value=t;saveDraft();autoGrow();}
     input.focus();
   };
-  input.addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey&&!e.isComposing){e.preventDefault();send();}});
+  input.addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey&&!e.isComposing){e.preventDefault();const f=!mentionBox.hidden&&mentionBox.querySelector("button");if(f)f.click();else send();}else if(e.key==="Escape")hideMention();});
   sendBtn.addEventListener("click",send);
+  // 멘션: @를 치면 이 방 멤버가 떠요
+  const mentionBox=h("ul",{class:"mention-pop",role:"listbox","aria-label":"멘션할 사람",hidden:true});
+  const hideMention=()=>{mentionBox.hidden=true;};
+  const mtok=()=>input.value.slice(0,input.selectionStart??input.value.length).match(/(?:^|\s)@([^\s@]{0,20})$/);
+  const pickMention=u=>{
+    const pos=input.selectionStart??input.value.length,v=input.value;
+    const before=v.slice(0,pos).replace(/@[^\s@]*$/,""),ins="@"+S.names[u]+" ";
+    input.value=before+ins+v.slice(pos);
+    const np=(before+ins).length;input.setSelectionRange(np,np);
+    hideMention();autoGrow();saveDraft();input.focus();
+  };
+  const updateMention=async()=>{
+    if(!mtok()||(S.rooms[code]&&S.rooms[code].is_dm)){hideMention();return;}
+    await fillNamesFor(S.cur.members||[]);
+    const mm=mtok();if(!mm){hideMention();return;}
+    const k=mm[1].toLowerCase(),nm=u=>S.names[u].toLowerCase();
+    const found=(S.cur.members||[]).filter(u=>u!==S.uid&&S.names[u]&&nm(u).includes(k))
+      .sort((a,b)=>(nm(a).startsWith(k)?0:1)-(nm(b).startsWith(k)?0:1)).slice(0,20);
+    if(!found.length){hideMention();return;}
+    mentionBox.replaceChildren(...found.map(u=>{
+      const b=h("button",{type:"button",role:"option"},h("span",{class:"av","aria-hidden":"true"},S.names[u].slice(0,1)),h("span",{class:"fn"},S.names[u]));
+      b.addEventListener("pointerdown",ev=>ev.preventDefault());
+      b.addEventListener("click",()=>pickMention(u));
+      return h("li",{},b);
+    }));
+    mentionBox.hidden=false;
+  };
+  input.addEventListener("input",updateMention);
+  input.addEventListener("keyup",e=>{if(e.key.startsWith("Arrow"))updateMention();});
+  input.addEventListener("blur",()=>setTimeout(hideMention,150));
   photoBtn.addEventListener("click",async()=>{
     const files=(await pickFiles(true)).slice(0,10);if(!files.length)return;
     photoBtn.disabled=true;photoBtn.textContent="⏳";
@@ -1375,7 +1440,7 @@ function viewRoom(main,code){
   const jump=h("button",{class:"jump",id:"jumpnew"},"↓ 새 메시지");
   jump.addEventListener("click",()=>{list.scrollTo({top:list.scrollHeight,behavior:"smooth"});jump.classList.remove("show");});
   list.addEventListener("scroll",()=>{if(list.scrollHeight-list.scrollTop-list.clientHeight<80)jump.classList.remove("show");},{passive:true});
-  main.append(h("div",{class:"room"},head,noticeBox,memberBox,h("div",{class:"msgs-wrap"},list,jump),emoPanel,h("div",{class:"composer"},photoBtn,emoBtn,input,sendBtn)));
+  main.append(h("div",{class:"room"},head,noticeBox,memberBox,h("div",{class:"msgs-wrap"},list,jump),emoPanel,mentionBox,h("div",{class:"composer"},photoBtn,emoBtn,input,sendBtn)));
   list.addEventListener("click",e=>{if(!e.target.closest(".bubble")&&!e.target.closest(".acts")&&S.cur.sel!=null){S.cur.sel=null;renderMsgs();}});
   updateRoomHead();
 
@@ -1537,11 +1602,12 @@ function renderMsgs(){
     if(!me&&m.author!==prevBy)box.append(h("div",{class:"who"},isOwnerOf(S.view.code,m.author)?h("span",{class:"crown",title:"방장"},"👑"):null,nameSpan(m.author)));
     const onImg=()=>{if(stick)box.scrollTop=box.scrollHeight;};
     const sel=S.cur.sel===m.id;
+    const pinged=!me&&Array.isArray(m.mentions)&&m.mentions.includes(S.uid);
     const bubble=m.sticker_url
       ?h("div",{class:"bubble sticker"+(sel?" sel":"")},h("img",{src:m.sticker_url,alt:"이모티콘",loading:"lazy",onload:onImg}))
       :m.image_url
       ?h("div",{class:"bubble photo"+(sel?" sel":"")},h("img",{src:m.image_url,alt:"사진",loading:"lazy",onload:onImg}),m.text?h("div",{class:"cap"},linkify(m.text)):null)
-      :h("div",{class:"bubble"+(sel?" sel":"")},linkify(m.text));
+      :h("div",{class:"bubble"+(sel?" sel":"")+(pinged?" ping":"")},withMentions(m.text,m));
     bubble.addEventListener("click",e=>{
       if(e.target.closest&&e.target.closest("a"))return;
       if(m.image_url&&!m.sticker_url){
@@ -1571,6 +1637,9 @@ function renderMsgs(){
     else if(S.cur.renderedN!=null&&n>S.cur.renderedN&&list[n-1].author!==S.uid)jump.classList.add("show");
   }
   S.cur.renderedN=n;
+  S.cur.mtried=S.cur.mtried||new Set();
+  const needN=new Set();for(const m of list)if(m.mentions)for(const u of m.mentions)if(!(u in S.names)&&!S.cur.mtried.has(u))needN.add(u);
+  if(needN.size){needN.forEach(u=>S.cur.mtried.add(u));fillNamesFor([...needN]).then(()=>renderMsgs());}
   fillNames();
 }
 
