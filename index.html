@@ -23,7 +23,7 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💬</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;700&family=Gowun+Dodum&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
 <script>try{var t=localStorage.getItem("theme");if(t==="white"||t==="black"||t==="pink")document.documentElement.setAttribute("data-theme",t);var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute("content",t==="white"?"#FFFFFF":t==="black"?"#000000":t==="pink"?"#C73E73":"#4A6FA5");}catch(e){}</script>
 <style>
 :root{
@@ -302,6 +302,73 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--accent)}
 @keyframes pop{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:reduce){.toast{animation:none}}
 @media (max-width:480px){.logo{font-size:20px}nav button{padding:6px 9px}}
+
+/* ===== 다듬기 (v2) : 색 테마는 그대로, 모양·깊이·움직임만 정리 ===== */
+:root{--r:16px;--sh:0 1px 2px rgba(20,24,32,.04),0 8px 22px -10px rgba(20,24,32,.12);--glass:color-mix(in srgb,var(--surface) 84%,transparent);--ring:color-mix(in srgb,var(--accent) 24%,transparent)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="white"]){--sh:0 1px 2px rgba(0,0,0,.3),0 10px 24px -12px rgba(0,0,0,.55)}}
+:root[data-theme="black"]{--sh:none}
+body{letter-spacing:-.01em}
+header{background:var(--glass);-webkit-backdrop-filter:saturate(1.4) blur(14px);backdrop-filter:saturate(1.4) blur(14px)}
+body::before{background:var(--glass)}
+.logo{font-size:21px;letter-spacing:-.05em;color:var(--accent)}
+nav{gap:2px;padding:3px;background:var(--chip);border-radius:999px}
+nav button{padding:5px 13px;font-size:14.5px;transition:background .15s,color .15s}
+nav button[aria-current="true"]{background:var(--surface);color:var(--ink);font-weight:700;box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.badge{top:-4px;right:-1px;box-shadow:0 0 0 2px var(--chip)}
+@media (max-width:560px){nav button{padding:5px 9px;font-size:14px}}
+h1{font-size:23px;font-weight:700;letter-spacing:-.03em}
+h2{font-size:13.5px;font-weight:600}
+.panel,.post,.posts,.rooms{border-radius:var(--r);box-shadow:var(--sh)}
+.panel{padding:16px 18px}
+.post-row,.room-row{padding:14px 18px;transition:background .15s}
+.pt,.rn{font-weight:600}
+.btn{border-radius:10px;padding:8px 15px;transition:transform .08s,background .15s,filter .15s}
+.btn:hover:not(:disabled){background:var(--chip)}
+.btn.primary:hover:not(:disabled){background:var(--accent);filter:brightness(1.1)}
+.btn:active:not(:disabled),.attach:active,.emo:active{transform:scale(.96)}
+input[type=text],input[type=email],input[type=password],textarea{border-radius:12px;padding:10px 13px;transition:border-color .15s,box-shadow .15s}
+input[type=text]:focus,input[type=email]:focus,input[type=password]:focus,textarea:focus{box-shadow:0 0 0 3px var(--ring)}
+.guide{border-radius:22px}
+.toast{border-radius:999px;padding:9px 18px}
+/* 채팅 */
+.room{border-radius:20px;box-shadow:var(--sh)}
+.room-head{padding:10px 14px}
+.msgs{padding:16px 14px;gap:4px}
+.bubble{padding:8px 13px;border-radius:18px;border-top-left-radius:6px;line-height:1.5;box-shadow:0 0 0 1px color-mix(in srgb,var(--line) 75%,transparent)}
+.me .bubble{box-shadow:none;border-top-left-radius:18px;border-top-right-radius:6px}
+.bubble.sticker,.bubble.photo{box-shadow:none}
+.day{background:var(--chip);padding:3px 12px}
+.composer{align-items:flex-end;gap:6px;padding:8px 10px}
+.attach{width:40px;height:40px;padding:0;border:0;border-radius:50%;background:none;font-size:20px;display:grid;place-items:center;transition:background .15s}
+.attach:hover,.attach[aria-pressed="true"]{background:var(--chip)}
+.composer textarea{border-radius:20px;background:var(--bg);border-color:transparent;padding:9px 15px;min-height:40px;line-height:1.5}
+.composer textarea:focus{background:var(--surface);border-color:var(--accent)}
+.btn.send{width:40px;height:40px;padding:0;border-radius:50%;font-size:20px;line-height:1;display:grid;place-items:center;flex:none}
+.c-tools{align-items:center}
+/* 이모티콘 창 */
+.emo-panel{display:flex;flex-direction:column;gap:8px;padding:10px 12px 12px;max-height:min(330px,46dvh);overflow:hidden}
+.c-emo{border-radius:var(--r)}
+.emo-bar{display:flex;gap:8px;align-items:center}
+.emo-bar input{flex:1;min-width:0;border-radius:999px;background:var(--bg);border-color:transparent;padding:7px 14px;font-size:14px}
+.emo-bar .link{flex:none;font-size:13px;padding:6px 11px;border-radius:999px}
+.emo-bar .link[aria-pressed="true"]{background:var(--chip);color:var(--accent);font-weight:600}
+.emo-tabs{display:flex;gap:6px}
+.emo-tabs button{border:0;background:none;color:var(--muted);font-size:13.5px;padding:4px 11px;border-radius:999px;font-weight:500}
+.emo-tabs button[aria-pressed="true"]{background:var(--chip);color:var(--accent);font-weight:700}
+.emo-body{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;margin:0 -4px;padding:6px 4px 2px}
+.emo-grid{grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:6px}
+.emo{border-radius:14px;background:var(--bg);padding:5px;transition:transform .1s,background .15s}
+.emo:hover{background:var(--chip)}
+.emo.sent{animation:tap .22s ease-out}
+@keyframes tap{50%{transform:scale(.86)}}
+.emo.add{border:1.5px dashed color-mix(in srgb,var(--accent) 55%,transparent);background:none;font-size:24px}
+.emo.locked{opacity:.35}
+.emo.editable{outline:1.5px dashed var(--muted);outline-offset:-1px}
+.emo.armed{background:color-mix(in srgb,var(--warn) 16%,transparent);outline:2px solid var(--warn)}
+.emo.armed .x{width:auto;padding:0 8px;border-radius:11px;font-size:12px}
+.emo-new{padding:10px;border-radius:14px;background:var(--bg);margin-bottom:8px}
+.emo-empty{color:var(--muted);font-size:14px;text-align:center;padding:22px 8px;margin:0}
+@media (prefers-reduced-motion:reduce){.emo.sent{animation:none}.btn,.emo{transition:none}}
 </style>
 </head>
 <body>
@@ -442,49 +509,103 @@ async function uploadSticker(file){
 }
 /* 이모티콘 고르기 창 (채팅과 댓글에서 같이 써요) */
 function makeEmoPanel(panel,onPick){
-  let emos=[],emoEdit=false,pending=null;
-  const drawEmo=()=>{
-    const editBtn=h("button",{class:"link"},emoEdit?"완료":"내 이모티콘 지우기");
-    editBtn.addEventListener("click",()=>{emoEdit=!emoEdit;drawEmo();});
-    const parts=[h("div",{class:"emo-head"},h("span",{},"이모티콘 "+emos.length+"개"),(S.admin||emos.some(e=>e.owner===S.uid))?editBtn:h("span"))];
+  let emos=[],mode="all",q="",editing=false,armed=null,pending=null,busy=false;
+  const rkey=()=>"emo-recent:"+S.uid;
+  const recentIds=()=>{try{return JSON.parse(localStorage.getItem(rkey())||"[]");}catch(e){return [];}};
+  const pushRecent=id=>{try{localStorage.setItem(rkey(),JSON.stringify([id,...recentIds().filter(x=>x!==id)].slice(0,24)));}catch(e){}};
+  const mine=e=>e.owner===S.uid||S.admin;
+  const nameOf=f=>(f.name||"").replace(/[.][^.]+$/,"").slice(0,20)||"이모티콘";
+  const search=h("input",{type:"text",placeholder:"이름으로 찾기",maxlength:"20","aria-label":"이모티콘 검색",autocomplete:"off"});
+  const editBtn=h("button",{class:"link","aria-pressed":"false",hidden:true},"정리");
+  const tabs=h("div",{class:"emo-tabs",role:"group"});
+  const body=h("div",{class:"emo-body"});
+  const shown=()=>{
+    if(q){const k=q.toLowerCase();return emos.filter(e=>(e.name||"").toLowerCase().includes(k));}
+    if(mode==="recent"){const m=new Map(emos.map(e=>[e.id,e]));return recentIds().map(id=>m.get(id)).filter(Boolean);}
+    if(mode==="mine")return emos.filter(e=>e.owner===S.uid);
+    return emos;
+  };
+  const choose=e=>{pushRecent(e.id);onPick(e);};
+  const drawTabs=()=>{
+    const defs=[["recent","최근"],["all","전체 "+emos.length],["mine","내 것"]];
+    tabs.replaceChildren(...defs.map(([k,l])=>h("button",{"aria-pressed":String(!q&&mode===k),onclick:()=>{mode=k;q="";search.value="";armed=null;drawTabs();drawBody();}},l)));
+  };
+  const drawBody=()=>{
+    const parts=[];
     if(pending){
-      const nm=h("input",{type:"text",value:pending.name,maxlength:"20",placeholder:"이모티콘 이름"});
-      const ok=h("button",{class:"btn primary"},"저장");
-      const no=h("button",{class:"btn"},"취소");
-      ok.addEventListener("click",async()=>{
-        const n=nm.value.trim().slice(0,20);if(!n){toast("이름을 입력해 주세요");return;}
+      const nm=h("input",{type:"text",value:pending.name,maxlength:"20",placeholder:"이모티콘 이름","aria-label":"이모티콘 이름"});
+      const ok=h("button",{class:"btn primary"},"저장"),no=h("button",{class:"btn"},"취소");
+      const save=async()=>{
+        const n=nm.value.trim().slice(0,20);if(!n){toast("이름을 입력해 주세요");nm.focus();return;}
         ok.disabled=true;
-        try{must(await sb.from("emoticons").insert({name:n,image_url:pending.url}));pending=null;toast("이모티콘을 추가했어요");await loadEmo();}
+        try{must(await sb.from("emoticons").insert({name:n,image_url:pending.url}));pending=null;mode="all";toast("이모티콘을 추가했어요");await load();}
         catch(err){handleErr(err);ok.disabled=false;}
-      });
-      no.addEventListener("click",()=>{pending=null;drawEmo();});
+      };
+      ok.addEventListener("click",save);
+      no.addEventListener("click",()=>{pending=null;drawBody();});
+      nm.addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.isComposing)save();else if(e.key==="Escape"){e.stopPropagation();pending=null;drawBody();}});
       parts.push(h("div",{class:"emo-new"},h("img",{src:pending.url,alt:""}),nm,ok,no));
+      setTimeout(()=>{nm.focus();nm.select();},0);
     }
-    const add=h("button",{class:"emo add",title:"이모티콘 추가","aria-label":"이모티콘 추가"},"+");
+    if(editing)parts.push(h("p",{class:"hint",style:"margin:0 0 8px"},"지우고 싶은 이모티콘을 두 번 눌러요."+(S.admin?"":" 내가 올린 것만 지울 수 있어요.")));
+    const add=h("button",{class:"emo add",title:"이모티콘 추가 (여러 장 선택 가능)","aria-label":"이모티콘 추가"},busy?"⏳":"+");
+    add.disabled=busy;
     add.addEventListener("click",async()=>{
-      const [f]=await pickFiles(false);if(!f)return;
-      add.disabled=true;add.textContent="⏳";
-      try{const url=await uploadSticker(f);pending={url,name:(f.name||"").replace(/[.][^.]+$/,"").slice(0,20)||"이모티콘"};drawEmo();}
-      catch(err){handleErr(err);add.disabled=false;add.textContent="+";}
+      const files=(await pickFiles(true)).slice(0,20);if(!files.length)return;
+      busy=true;drawBody();
+      let done=0,fail=null;
+      try{
+        if(files.length===1)pending={url:await uploadSticker(files[0]),name:nameOf(files[0])};
+        else for(const f of files){
+          try{const url=await uploadSticker(f);must(await sb.from("emoticons").insert({name:nameOf(f),image_url:url}));done++;}
+          catch(err){fail=err;}
+        }
+      }catch(err){fail=err;}
+      busy=false;
+      if(fail)handleErr(fail);
+      if(done){mode="all";toast(done+"개를 추가했어요");await load();}else drawBody();
     });
-    const tiles=emos.map(e=>{
-      const t=h("button",{class:"emo",title:e.name,"aria-label":e.name},h("img",{src:e.image_url,alt:e.name,loading:"lazy"}));
-      if(emoEdit&&(e.owner===S.uid||S.admin)){
-        t.append(h("span",{class:"x","aria-hidden":"true"},"×"));
-        t.addEventListener("click",async()=>{try{must(await sb.from("emoticons").delete().eq("id",e.id));toast("이모티콘을 지웠어요");await loadEmo();}catch(err){handleErr(err);}});
-      }else t.addEventListener("click",()=>onPick(e));
+    const list=shown();
+    const tiles=list.map(e=>{
+      const can=editing&&mine(e),isArmed=armed===e.id;
+      const t=h("button",{class:"emo"+(editing?(can?" editable":" locked"):"")+(isArmed?" armed":""),title:e.name,"aria-label":e.name},h("img",{src:e.image_url,alt:"",loading:"lazy",draggable:"false"}));
+      if(can)t.append(h("span",{class:"x","aria-hidden":"true"},isArmed?"지우기":"×"));
+      t.addEventListener("click",async()=>{
+        if(editing){
+          if(!can)return;
+          if(!isArmed){armed=e.id;drawBody();return;}
+          try{must(await sb.from("emoticons").delete().eq("id",e.id));toast("이모티콘을 지웠어요");armed=null;await load();}catch(err){handleErr(err);}
+          return;
+        }
+        choose(e);t.classList.remove("sent");void t.offsetWidth;t.classList.add("sent");
+      });
       return t;
     });
-    parts.push(h("div",{class:"emo-grid"},add,tiles));
-    if(!emos.length&&!pending)parts.push(h("p",{class:"hint"},"+를 눌러 갖고 있는 그림을 이모티콘으로 추가해 보세요. 추가한 이모티콘은 다정챗 친구 모두가 함께 쓸 수 있어요."));
-    panel.replaceChildren(...parts);
+    parts.push(h("div",{class:"emo-grid"},(!editing&&!q&&mode!=="recent")?add:null,tiles));
+    if(!tiles.length)parts.push(h("p",{class:"emo-empty"},
+      q?"'"+q+"'에 맞는 이모티콘이 없어요":mode==="recent"?"아직 보낸 이모티콘이 없어요. 전체에서 골라 보세요.":mode==="mine"?"내가 올린 이모티콘이 없어요. +를 눌러 추가해 보세요.":"+를 눌러 갖고 있는 그림을 이모티콘으로 추가해 보세요. 추가한 이모티콘은 다정챗 친구 모두가 함께 쓸 수 있어요."));
+    body.replaceChildren(...parts);
   };
-  const loadEmo=async()=>{
-    try{emos=must(await sb.from("emoticons").select("id,owner,name,image_url").order("created_at",{ascending:true}).limit(300));}
+  const load=async()=>{
+    try{emos=must(await sb.from("emoticons").select("id,owner,name,image_url").order("created_at",{ascending:false}).limit(300));}
     catch(err){handleErr(err);}
-    drawEmo();
+    editBtn.hidden=!emos.some(mine);
+    if(editing&&editBtn.hidden){editing=false;editBtn.textContent="정리";}
+    drawTabs();drawBody();
   };
-  return {open:()=>{panel.replaceChildren(h("p",{class:"hint",style:"margin:0"},"불러오는 중…"));loadEmo();}};
+  search.addEventListener("input",()=>{q=search.value.trim();armed=null;drawTabs();drawBody();});
+  search.addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.isComposing&&!editing){const f=shown()[0];if(f){choose(f);search.select();}}});
+  editBtn.addEventListener("click",()=>{editing=!editing;armed=null;editBtn.setAttribute("aria-pressed",String(editing));editBtn.textContent=editing?"완료":"정리";drawBody();});
+  return {open:()=>{
+    editing=false;armed=null;pending=null;q="";search.value="";editBtn.hidden=true;editBtn.textContent="정리";editBtn.setAttribute("aria-pressed","false");
+    mode=recentIds().length?"recent":"all";
+    panel.replaceChildren(h("div",{class:"emo-bar"},search,editBtn),tabs,body);
+    tabs.replaceChildren();body.replaceChildren(h("p",{class:"emo-empty"},"불러오는 중…"));
+    load().then(()=>{
+      if(mode==="recent"&&!shown().length){mode="all";drawTabs();drawBody();}
+      if(matchMedia("(hover:hover) and (pointer:fine)").matches)search.focus();
+    });
+  }};
 }
 function photoLink(url,onload){
   const img=h("img",{src:url,alt:"사진",loading:"lazy"});if(onload)img.addEventListener("load",onload);
@@ -1208,7 +1329,7 @@ function viewRoom(main,code){
   S.cur.members=[];
   const list=h("div",{class:"msgs",id:"msgs"},h("p",{class:"empty"},"불러오는 중…"));
   const input=h("textarea",{rows:"1",placeholder:"메시지 입력 (Shift+Enter 줄바꿈)",maxlength:"2000"});
-  const sendBtn=h("button",{class:"btn primary"},"전송");
+  const sendBtn=h("button",{class:"btn primary send",title:"보내기","aria-label":"보내기"},"↑");
   const photoBtn=h("button",{class:"attach",title:"사진 보내기","aria-label":"사진 보내기"},"📷");
   const emoBtn=h("button",{class:"attach",title:"이모티콘","aria-label":"이모티콘"},"😊");
   const emoPanel=h("div",{class:"emo-panel",style:"display:none"});
@@ -1242,11 +1363,15 @@ function viewRoom(main,code){
     catch(err){handleErr(err);}
   };
   const emo=makeEmoPanel(emoPanel,sendSticker);
-  emoBtn.addEventListener("click",()=>{
-    const open=emoPanel.style.display==="none";
+  const toggleEmo=on=>{
+    const stick=list.scrollHeight-list.scrollTop-list.clientHeight<80;
+    const open=on==null?emoPanel.style.display==="none":on;
     emoPanel.style.display=open?"":"none";emoBtn.setAttribute("aria-pressed",String(open));
     if(open)emo.open();
-  });
+    if(stick)requestAnimationFrame(()=>{list.scrollTop=list.scrollHeight;});
+  };
+  emoBtn.addEventListener("click",()=>toggleEmo());
+  emoPanel.addEventListener("keydown",e=>{if(e.key==="Escape"){toggleEmo(false);input.focus();}});
   const jump=h("button",{class:"jump",id:"jumpnew"},"↓ 새 메시지");
   jump.addEventListener("click",()=>{list.scrollTo({top:list.scrollHeight,behavior:"smooth"});jump.classList.remove("show");});
   list.addEventListener("scroll",()=>{if(list.scrollHeight-list.scrollTop-list.clientHeight<80)jump.classList.remove("show");},{passive:true});
