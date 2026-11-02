@@ -382,6 +382,7 @@ input[type=text]:focus,input[type=email]:focus,input[type=password]:focus,textar
 .rq{align-self:flex-start;max-width:78%;font-size:12.5px;color:var(--muted);background:var(--chip);border-radius:12px;padding:4px 10px;margin-top:2px;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rq.me{align-self:flex-end}
 .rq.gone{cursor:default;font-style:italic}
+.msgs>*{flex-shrink:0}
 .line.flash .bubble{animation:flash 1.2s}
 @keyframes flash{0%,60%{box-shadow:0 0 0 3px var(--accent)}100%{box-shadow:none}}
 .reacts{display:flex;flex-wrap:wrap;gap:4px;margin-top:-1px;padding:0 6px}
@@ -398,6 +399,10 @@ input[type=text]:focus,input[type=email]:focus,input[type=password]:focus,textar
 .reply-bar .rt{flex:1;min-width:0;display:flex;flex-direction:column}
 .reply-bar .rt b{color:var(--accent);font-weight:700}
 .reply-bar .rt>span{color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 읽음 표시 */
+.rd{align-self:flex-end;border:0;background:none;color:var(--muted);font-size:11px;padding:0 6px;margin:-1px 0 2px}
+button.rd{cursor:pointer;text-decoration:underline;text-decoration-color:transparent;text-underline-offset:3px;transition:text-decoration-color .15s}
+button.rd:hover{text-decoration-color:currentColor}
 </style>
 </head>
 <body>
@@ -890,7 +895,26 @@ async function fillNames(){
 
 /* ---------- 읽음/배지 ---------- */
 function lastRead(c){let v=S.lr[c]||0;try{v=Math.max(v,+localStorage.getItem("lr:"+S.uid+":"+c)||0)}catch(e){}return v;}
-function markRead(c){const now=Date.now();S.lr[c]=now;try{localStorage.setItem("lr:"+S.uid+":"+c,String(now))}catch(e){}}
+function markRead(c){const now=Date.now();S.lr[c]=now;try{localStorage.setItem("lr:"+S.uid+":"+c,String(now))}catch(e){}syncRead(c);}
+const readSendOn=()=>{try{return localStorage.getItem("rdsend")!=="off";}catch(e){return true;}};
+const readTimer={},readLast={};let readOff=false;
+function syncRead(c){
+  if(readOff||!readSendOn()||!S.uid)return;
+  const wait=1500-(Date.now()-(readLast[c]||0));
+  if(wait>0){if(!readTimer[c])readTimer[c]=setTimeout(()=>{readTimer[c]=null;syncRead(c);},wait);return;}
+  readLast[c]=Date.now();
+  sb.from("room_reads").upsert({room_id:c,user_id:S.uid},{onConflict:"room_id,user_id"}).then(r=>{
+    if(r.error){if(/room_reads|does not exist|schema cache/i.test(r.error.message||""))readOff=true;else console.warn("read sync:",r.error);}
+  });
+}
+async function loadReads(code){
+  const cur=S.cur;
+  try{
+    const rows=must(await sb.from("room_reads").select("user_id,last_read_at").eq("room_id",code));
+    cur.reads={};for(const r of rows)cur.reads[r.user_id]=ms(r.last_read_at);
+    if(S.cur===cur)renderMsgs();
+  }catch(e){console.warn("reads:",e);}
+}
 function isUnread(c){const r=S.rooms[c];return !!(r&&r.last_at&&r.last_by!==S.uid&&ms(r.last_at)>lastRead(c));}
 function viewingRoom(c){return S.tab==="chat"&&S.view.name==="room"&&S.view.code===c&&!document.hidden;}
 function roomTitle(c){const r=S.rooms[c];if(r&&r.is_dm){return S.names[S.dmOther[c]]||"1:1 채팅";}return (r&&r.name)||"채팅방";}
@@ -1415,7 +1439,7 @@ function viewRoom(main,code){
   const photoBtn=h("button",{class:"attach",title:"사진 보내기","aria-label":"사진 보내기"},"📷");
   const emoBtn=h("button",{class:"attach",title:"이모티콘","aria-label":"이모티콘"},"😊");
   const emoPanel=h("div",{class:"emo-panel",style:"display:none"});
-  S.cur.msgs=[];S.cur.memberCount=null;S.cur.sel=null;S.cur.reacts=[];S.cur.reply=null;
+  S.cur.msgs=[];S.cur.memberCount=null;S.cur.sel=null;S.cur.reacts=[];S.cur.reply=null;S.cur.reads={};
   const addMsgs=rows=>{const have=new Set(S.cur.msgs.map(m=>m.id));for(const r of rows)if(!have.has(r.id)){S.cur.msgs.push(r);if(r.author===S.uid)S.cur.forceBottom=true;}S.cur.msgs.sort((a,b)=>ms(a.created_at)-ms(b.created_at)||a.id-b.id);renderMsgs();};
   const dkey="draft:"+S.uid+":"+code;
   const autoGrow=()=>{input.style.height="auto";input.style.height=Math.min(input.scrollHeight,120)+"px";};
@@ -1517,7 +1541,7 @@ function viewRoom(main,code){
       if($("#roommembers")&&$("#roommembers").style.display!=="none")drawMembers();
     }catch(e){}
   };
-  loadMsgs();loadCount();
+  loadMsgs();loadCount();loadReads(code);
   const ch=sb.channel("room-"+code+"-"+Date.now())
     .on("postgres_changes",{event:"INSERT",schema:"public",table:"messages",filter:"room_id=eq."+code},p=>{
       addMsgs([p.new]);if(!document.hidden){markRead(code);updateBadges();}})
@@ -1540,6 +1564,15 @@ function viewRoom(main,code){
       renderMsgs();
     }).subscribe();
   S.cur.channels.push(rch);
+  const dch=sb.channel("reads-"+code+"-"+Date.now())
+    .on("postgres_changes",{event:"*",schema:"public",table:"room_reads",filter:"room_id=eq."+code},p=>{
+      const r=p.new;if(!r||!r.user_id)return;
+      const rd=S.cur.reads||(S.cur.reads={}),old=rd[r.user_id]||0,nv=ms(r.last_read_at);
+      if(nv<=old)return;
+      rd[r.user_id]=nv;
+      if(r.user_id!==S.uid)renderMsgs();
+    }).subscribe();
+  S.cur.channels.push(dch);
   input.focus();
 }
 /* 관리자용 방 이름 바꾸기 */
@@ -1667,6 +1700,7 @@ function renderMsgs(){
   const stick=atBottom;const prevTop=box.scrollTop;
   box.replaceChildren();
   const list=S.cur.msgs||[];
+  let lastMine=null;for(const x of list)if(x.author===S.uid)lastMine=x;
   const rmap=new Map();
   for(const r of S.cur.reacts||[]){let em=rmap.get(r.message_id);if(!em)rmap.set(r.message_id,em=new Map());let us=em.get(r.emoji);if(!us)em.set(r.emoji,us=[]);us.push(r.user_id);}
   if(!list.length)box.append(h("p",{class:"empty"},"첫 메시지를 보내 보세요."));
@@ -1709,6 +1743,21 @@ function renderMsgs(){
       b.addEventListener("click",()=>toggleReact(m,em));
       return b;
     })));
+    if(lastMine&&m.id===lastMine.id){
+      const mem=(S.cur.members||[]).filter(u=>u!==S.uid),t0=ms(m.created_at);
+      const got=mem.filter(u=>((S.cur.reads||{})[u]||0)>=t0);
+      if(got.length){
+        if(mem.length===1)box.append(h("span",{class:"rd"},"읽음"));
+        else{
+          const b=h("button",{class:"rd",title:"누가 읽었는지 보기"},got.length===mem.length?"모두 읽음":got.length+"명 읽음");
+          b.addEventListener("click",async()=>{
+            await fillNamesFor(mem);const nm=u=>S.names[u]||"…",no=mem.filter(u=>!got.includes(u));
+            toast("읽음: "+got.map(nm).join(", ")+(no.length?" · 아직: "+no.map(nm).join(", "):""));
+          });
+          box.append(b);
+        }
+      }
+    }
     if(sel){
       box.append(h("div",{class:"reactbar"+(me?" me":"")},REACTS.map(e=>{
         const on=!!(rm&&rm.get(e)&&rm.get(e).includes(S.uid));
@@ -2029,6 +2078,13 @@ function viewSettings(main){
   });
   const out=twoStep(h("button",{class:"btn danger"},"로그아웃"),"로그아웃",S.anon?"닉네임 계정은 로그아웃하면 다시 못 들어와요. 한 번 더 누르면 로그아웃":"한 번 더 누르면 로그아웃",async()=>{await dropServerSub();sb.auth.signOut();});
 
+  const rdBtn=h("button",{class:"btn"});
+  const drawRd=()=>{const on=readSendOn();rdBtn.textContent=on?"켜짐":"꺼짐";rdBtn.className=on?"btn primary":"btn";};
+  rdBtn.addEventListener("click",()=>{
+    const on=!readSendOn();try{localStorage.setItem("rdsend",on?"on":"off");}catch(e){}
+    drawRd();toast(on?"읽음 표시를 켰어요":"읽음 표시를 껐어요");
+  });
+  drawRd();
   let adminPanel=null;
   if(S.isAdmin){
     const ab=h("button",{class:"btn"});
@@ -2044,6 +2100,9 @@ function viewSettings(main){
     h("div",{class:"panel"},h("h2",{},"테마"),themeBox,
       h("p",{class:"hint"},"기본과 핑크는 기기의 밝은 화면·어두운 화면 설정을 따라가요.")),
     h("div",{class:"panel"},h("h2",{},"푸시 알림"),pushRow()),
+    h("div",{class:"panel"},h("h2",{},"읽음 표시"),
+      h("div",{class:"setrow"},h("span",{},"내가 읽은 걸 보여주기"),rdBtn),
+      h("p",{class:"hint"},"켜 두면 채팅방 친구들이 내가 메시지를 읽었는지 볼 수 있어요. 끄면 내 읽음은 안 보이고, 친구들의 읽음은 계속 볼 수 있어요. 이 기기에서만 적용돼요.")),
     h("div",{class:"panel"},h("h2",{},"앱 안 알림"),
       h("div",{class:"setrow"},h("span",{},"알림음"),soundBtn),
       h("h2",{style:"margin:12px 0 4px"},"알림음 고르기"),sndBox,
