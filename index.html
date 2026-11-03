@@ -410,6 +410,19 @@ button.rd:hover{text-decoration-color:currentColor}
 .rp-h:first-child{margin-top:0}
 .reactpick button{border:0;background:none;font-size:22px;line-height:1.3;padding:3px 0;border-radius:10px}
 .reactpick button:hover,.reactpick button.on{background:var(--chip)}
+/* 새 소식 */
+.guide .nw{margin:0 0 14px}
+.guide .nw+.nw{border-top:1px solid var(--line);padding-top:14px}
+.guide .nw-t{display:flex;align-items:baseline;gap:8px;margin:0 0 6px}
+.guide .nw-t span{flex:none;font-size:12px;font-weight:600;color:var(--accent);background:var(--chip);border-radius:999px;padding:2px 9px}
+.guide .nw-t b{font-size:16px}
+.guide .nw-btn{display:flex;justify-content:flex-end;margin-top:14px}
+/* 게시판 반응 */
+.post-rx{margin:14px 0 4px}
+.post-rx .reacts{padding:0;margin:0;gap:6px}
+.post-rx .rc{font-size:14px;padding:3px 11px}
+.post-rx .rc.add{color:var(--muted);border-style:dashed}
+.post-rx .reactpick{width:100%;max-width:380px;margin:8px 0 0;max-height:min(260px,40dvh)}
 </style>
 </head>
 <body>
@@ -492,6 +505,7 @@ function handleErr(e){
   else if(m==="NOT_IMAGE")toast("이 파일은 사진으로 올릴 수 없어요.");
   else if(m==="TOO_BIG"||/exceeded the maximum|too large/i.test(m))toast("사진이 너무 커요. 5MB 이하로 올려 주세요.");
   else if(/mentions/i.test(m))toast("멘션 설정이 필요해요. add-mentions.sql을 실행해 주세요.");
+  else if(/post_reactions/i.test(m))toast("게시판 반응 설정이 필요해요. add-post-reactions.sql을 실행해 주세요.");
   else if(/reply_to|message_reactions/i.test(m))toast("답장·반응 설정이 필요해요. add-reply-reactions.sql을 실행해 주세요.");
   else if(/images_check|content_check|column .* does not exist/i.test(m))toast("사진 기능 설정이 필요해요. add-photos.sql을 실행해 주세요.");
   else if(m==="PERM_DENIED")toast("알림이 허용되지 않았어요. 기기(브라우저) 설정에서 알림을 허용해 주세요.");
@@ -1120,8 +1134,21 @@ async function loadPosts(){
     S.posts=data;S.postsLoaded=true;
     if(S.seenPosts){for(const p of data){if(!S.seenPosts.has(p.id)&&p.author!==S.uid){beep();toast("새 글: "+p.title);sysNotify("다정챗 새 글",p.title);break;}}}
     S.seenPosts=new Set(data.map(p=>p.id));
-    updatePostList();
+    updatePostList();loadPostRx();
   }catch(e){console.warn(e);}
+}
+async function loadPostRx(){
+  if(S.postRxOff)return;
+  try{
+    const rows=must(await sb.from("post_reactions").select("post_id,emoji").limit(5000));
+    const m=new Map();
+    for(const r of rows){let e=m.get(r.post_id);if(!e)m.set(r.post_id,e=new Map());e.set(r.emoji,(e.get(r.emoji)||0)+1);}
+    S.postRx=m;updatePostList();
+  }catch(e){S.postRxOff=true;console.warn("post reactions:",e);}
+}
+function rxSum(id){
+  const m=S.postRx&&S.postRx.get(id);if(!m||!m.size)return null;
+  return h("span",{},[...m].sort((a,b)=>b[1]-a[1]).slice(0,3).map(([e,n])=>e+n).join(" "));
 }
 function boardSort(){try{return localStorage.getItem("boardSort")||"new";}catch(e){return "new";}}
 function viewBoard(main){
@@ -1155,7 +1182,7 @@ function updatePostList(){
   for(const p of [...pins,...list]){
     ul.append(h("li",{},h("button",{class:"post-row"+(p.pinned?" pinned":""),onclick:()=>go("board",{name:"post",id:p.id})},
       h("span",{class:"pt"},p.pinned?h("span",{class:"pin-tag"},"📌 공지"):null,(p.images&&p.images.length?"📷 ":"")+p.title,p.cmtN?h("span",{class:"cnt"}," ["+p.cmtN+"]"):null),
-      h("span",{class:"pm"},nameSpan(p.author),h("span",{},fmt(p.created_at)),h("span",{},"추천 "+(p.likeN||0)),h("span",{},"댓글 "+(p.cmtN||0))))));
+      h("span",{class:"pm"},nameSpan(p.author),h("span",{},fmt(p.created_at)),h("span",{},"추천 "+(p.likeN||0)),rxSum(p.id),h("span",{},"댓글 "+(p.cmtN||0))))));
   }
   fillNames();
 }
@@ -1214,7 +1241,57 @@ function viewPost(main,id){
   main.append(h("button",{class:"link",style:"margin-bottom:10px",onclick:()=>go("board")},"목록으로"),art,
     h("section",{class:"comments"},cCount,cList,h("div",{class:"c-tools"},cEmoBtn,cInput,cBtn),cEmoPanel));
 
-  let post,likes=[];
+  let post,likes=[],prs=[],pickOpen=false;
+  const rxBox=h("div",{class:"post-rx"});
+  const togglePR=async e=>{
+    const same=r=>r.user_id===S.uid&&r.emoji===e;
+    const i=prs.findIndex(same),had=i>=0;
+    if(had)prs.splice(i,1);else{prs.push({user_id:S.uid,emoji:e});rxPush(e);}
+    drawRx();
+    try{
+      if(had)must(await sb.from("post_reactions").delete().match({post_id:id,user_id:S.uid,emoji:e}));
+      else must(await sb.from("post_reactions").insert({post_id:id,emoji:e}));
+    }catch(err){
+      const j=prs.findIndex(same);
+      if(had){if(j<0)prs.push({user_id:S.uid,emoji:e});}else if(j>=0)prs.splice(j,1);
+      drawRx();handleErr(err);
+    }
+  };
+  const drawRx=()=>{
+    const em=new Map();
+    for(const r of prs){let u=em.get(r.emoji);if(!u)em.set(r.emoji,u=[]);u.push(r.user_id);}
+    const chips=[...em].map(([e,us])=>{
+      const b=h("button",{class:"rc"+(us.includes(S.uid)?" mine":""),title:us.map(u=>u===S.uid?"나":(S.names[u]||"…")).join(", ")},e+" "+us.length);
+      b.addEventListener("click",()=>togglePR(e));
+      return b;
+    });
+    const plus=h("button",{class:"rc add","aria-label":"반응 달기","aria-expanded":String(pickOpen)},pickOpen?"접기":"＋ 반응");
+    plus.addEventListener("click",()=>{pickOpen=!pickOpen;drawRx();});
+    const kids=[h("div",{class:"reacts"},...chips,plus)];
+    if(pickOpen){
+      const gbtn=e=>{
+        const on=prs.some(r=>r.user_id===S.uid&&r.emoji===e);
+        const b=h("button",{type:"button",class:on?"on":"","aria-label":e+" 반응"},e);
+        b.addEventListener("click",()=>{pickOpen=false;togglePR(e);});
+        return b;
+      };
+      const k=[],rec=rxRecent();
+      k.push(h("div",{class:"rp-h"},"자주 쓰는"),...REACTS.map(gbtn));
+      if(rec.length)k.push(h("div",{class:"rp-h"},"최근"),...rec.map(gbtn));
+      for(const [t,l] of RX_MORE)k.push(h("div",{class:"rp-h"},t),...l.map(gbtn));
+      kids.push(h("div",{class:"reactpick"},...k));
+    }
+    rxBox.replaceChildren(...kids);
+  };
+  const loadPR=async()=>{
+    try{
+      const rows=must(await sb.from("post_reactions").select("user_id,emoji").eq("post_id",id));
+      prs=rows.map(r=>({user_id:r.user_id,emoji:r.emoji}));
+      await fillNamesFor([...new Set(prs.map(r=>r.user_id))]);
+      drawRx();
+    }catch(e){console.warn("post reactions:",e);}
+  };
+  drawRx();
   const draw=()=>{
     if(post===undefined)return;
     if(!post){art.replaceChildren(h("p",{class:"empty"},"삭제되었거나 없는 글이에요."));return;}
@@ -1232,7 +1309,7 @@ function viewPost(main,id){
     art.replaceChildren(post.pinned?h("span",{class:"pin-tag"},"📌 공지"):null,h("h1",{},post.title),h("div",{class:"pm"},nameSpan(post.author),h("span",{},fmt(post.created_at))),
       h("div",{class:"body"},linkify(post.body||"")),
       post.images&&post.images.length?h("div",{class:"imgs"},post.images.map(u=>photoLink(u))):null,
-      h("div",{class:"post-actions"},likeBtn,pinBtn,del));
+      rxBox,h("div",{class:"post-actions"},likeBtn,pinBtn,del));
     fillNames();
   };
   const loadPost=async()=>{try{const {data}=await sb.from("posts").select("*").eq("id",id).maybeSingle();post=data||null;draw();}catch(e){console.warn(e);}};
@@ -1253,7 +1330,7 @@ function viewPost(main,id){
     try{must(await sb.from("comments").insert({post_id:id,text:t.slice(0,1000)}));cInput.value="";loadComments();}
     catch(e){handleErr(e);}cBtn.disabled=false;
   });
-  loadPost();loadLikes();loadComments();
+  loadPost();loadLikes();loadComments();loadPR();
   const rc=debounce(loadComments),rl=debounce(loadLikes),rp=debounce(loadPost);
   const ch=sb.channel("post-"+id+"-"+Date.now())
     .on("postgres_changes",{event:"*",schema:"public",table:"comments"},p=>{if(p.eventType==="DELETE"||(p.new&&p.new.post_id===id))rc();})
@@ -1261,6 +1338,12 @@ function viewPost(main,id){
     .on("postgres_changes",{event:"DELETE",schema:"public",table:"posts"},()=>rp())
     .subscribe();
   S.cur.channels.push(ch);
+  const rpr=debounce(loadPR);
+  const pch=sb.channel("pr-"+id+"-"+Date.now())
+    .on("postgres_changes",{event:"*",schema:"public",table:"post_reactions"},p=>{
+      if((p.new&&p.new.post_id===id)||(p.old&&p.old.post_id===id))rpr();
+    }).subscribe();
+  S.cur.channels.push(pch);
 }
 
 /* ---------- 채팅 ---------- */
@@ -1540,7 +1623,7 @@ function viewRoom(main,code){
   jump.addEventListener("click",()=>{list.scrollTo({top:list.scrollHeight,behavior:"smooth"});jump.classList.remove("show");});
   list.addEventListener("scroll",()=>{if(list.scrollHeight-list.scrollTop-list.clientHeight<80)jump.classList.remove("show");},{passive:true});
   main.append(h("div",{class:"room"},head,noticeBox,memberBox,h("div",{class:"msgs-wrap"},list,jump),emoPanel,mentionBox,replyBar,h("div",{class:"composer"},photoBtn,emoBtn,input,sendBtn)));
-  list.addEventListener("click",e=>{if(!e.target.closest(".bubble")&&!e.target.closest(".acts")&&S.cur.sel!=null){S.cur.sel=null;renderMsgs();}});
+  list.addEventListener("click",e=>{if(!e.target.closest(".bubble")&&!e.target.closest(".acts")&&!e.target.closest(".reactbar")&&!e.target.closest(".reactpick")&&S.cur.sel!=null){S.cur.sel=null;renderMsgs();}});
   updateRoomHead();
 
   const loadMsgs=async()=>{
@@ -1784,7 +1867,7 @@ function renderMsgs(){
       };
       const moreOpen=S.cur.rxMore===m.id;
       const more=h("button",{class:"more","aria-label":"반응 더 보기","aria-expanded":String(moreOpen)},moreOpen?"−":"+");
-      more.addEventListener("click",()=>{S.cur.rxMore=moreOpen?null:m.id;renderMsgs();});
+      more.addEventListener("click",ev=>{ev.stopPropagation();S.cur.rxMore=moreOpen?null:m.id;renderMsgs();});
       box.append(h("div",{class:"reactbar"+(me?" me":"")},REACTS.map(rbtn),more));
       if(moreOpen){
         const kids=[],rec=rxRecent();
@@ -1954,7 +2037,7 @@ function showGuide(){
       "공개방은 목록에서 바로 입장해요.",
       "친구가 알려준 6자리 코드로 비공개방에 들어갈 수 있어요.",
       "📷로 사진, 😊로 이모티콘을 보내요. 이모티콘 창의 +로 내 그림을 이모티콘으로 만들 수 있어요.",
-      "말풍선을 톡 누르면 복사나 삭제를 할 수 있어요.",
+      "말풍선을 톡 누르면 반응 · 답장 · 복사 · 삭제를 할 수 있고, 입력창에 @를 치면 친구를 불러요.",
       "방 위쪽 🔔로 그 방 알림만 끌 수 있고, 👥로 멤버를 봐요. 👑가 방장이에요."]},
     {e:"👫",t:"친구",b:[
       "친구 탭에 내 친구 코드가 있어요. 눌러서 복사해 친구에게 보내 주세요.",
@@ -1996,6 +2079,43 @@ function showGuide(){
   document.addEventListener("keydown",onKey);
   document.body.append(back);
   draw();
+}
+
+/* ---------- 새 소식 (업데이트 내역) : 새 내역은 NEWS 맨 위에 추가해요 ---------- */
+const NEWS=[
+  {id:"2026-11-03",date:"11월 3일",title:"게시판에도 반응을 남겨요",items:[
+    "글 아래 ＋ 반응을 눌러 70가지 넘는 이모지로 반응을 남길 수 있어요. 목록에는 많이 받은 반응이 보여요.",
+    "채팅 반응의 ＋ 버튼이 눌리지 않던 문제를 고쳤어요.",
+    "업데이트 후 처음 열면 이런 새 소식 창이 한 번 떠요. 지난 내역은 설정 → 업데이트 내역에서 볼 수 있어요."]},
+  {id:"2026-11-02",date:"11월 2일",title:"채팅이 더 편해졌어요",items:[
+    "@로 친구 부르기: 입력창에 @를 치면 이 방 멤버가 떠요. 불린 친구에게는 알림이 따로 가요.",
+    "반응과 답장: 말풍선을 누르면 반응과 답장 버튼이 나와요. 반응은 + 를 눌러 70가지 넘게 골라요.",
+    "읽음 표시: 내가 보낸 마지막 메시지 아래에 읽은 사람이 보여요. 설정에서 끌 수 있어요.",
+    "이모티콘: 이름으로 찾고, 최근 쓴 걸 먼저 보고, 여러 장을 한 번에 추가할 수 있어요.",
+    "화면을 더 깔끔하게 다듬었어요. 말풍선, 입력창, 탭이 달라졌어요."]},
+];
+function newsSeenId(){try{return localStorage.getItem("news:"+S.uid);}catch(e){return null;}}
+function markNewsSeen(){try{localStorage.setItem("news:"+S.uid,NEWS[0].id);}catch(e){}}
+function showNews(force){
+  if($(".guide-back"))return;
+  let list=NEWS;
+  if(!force){const k=NEWS.findIndex(n=>n.id===newsSeenId());list=k<0?NEWS:NEWS.slice(0,k);}
+  if(!list.length)return;
+  const more=!force&&list.length>3;
+  list=list.slice(0,force?10:3);
+  const back=h("div",{class:"guide-back",role:"dialog","aria-modal":"true","aria-label":"새 소식"});
+  const onKey=e=>{if(e.key==="Escape")close();};
+  const close=()=>{markNewsSeen();back.remove();document.removeEventListener("keydown",onKey);};
+  const ok=h("button",{class:"btn primary",onclick:close},force?"닫기":"확인했어요");
+  back.append(h("div",{class:"guide"},
+    h("div",{class:"g-emoji","aria-hidden":"true"},"✨"),
+    h("h2",{},force?"업데이트 내역":"새 소식"),
+    list.map(n=>h("section",{class:"nw"},h("div",{class:"nw-t"},h("span",{},n.date),h("b",{},n.title)),h("ul",{},n.items.map(x=>h("li",{},x))))),
+    more?h("p",{class:"g-note"},"이전 소식은 설정 → 업데이트 내역에서 볼 수 있어요."):null,
+    h("div",{class:"nw-btn"},ok)));
+  back.addEventListener("click",e=>{if(e.target===back)close();});
+  document.addEventListener("keydown",onKey);
+  document.body.append(back);ok.focus();
 }
 
 /* ---------- 설정 ---------- */
@@ -2140,7 +2260,7 @@ function viewSettings(main){
       h("h2",{style:"margin:12px 0 4px"},"알림 끈 채팅방"),mutedRooms),
     h("div",{class:"panel"},h("h2",{},"도움말"),
       h("p",{class:"hint",style:"margin:0 0 10px"},"다정챗 사용법을 처음부터 다시 볼 수 있어요."),
-      h("button",{class:"btn",onclick:showGuide},"사용법 다시 보기")),
+      h("div",{class:"row",style:"flex-wrap:wrap"},h("button",{class:"btn",onclick:showGuide},"사용법 다시 보기"),h("button",{class:"btn",onclick:()=>showNews(true)},"업데이트 내역"))),
     h("div",{class:"panel"},h("h2",{},"앱 업데이트"),
       h("p",{class:"hint",style:"margin:0 0 10px"},"GitHub에 새 버전을 올렸는데 화면이 그대로면 눌러 주세요. 앱 전체를 새로 받아와요."),
       h("button",{class:"btn",onclick:async()=>{
@@ -2213,7 +2333,7 @@ async function onSession(session){
     S.admin=S.isAdmin&&adminModeOn();
     if(S.isAdmin)syncAdminBadge();
     startApp();
-    if(!guideSeen())setTimeout(showGuide,600);
+    if(!guideSeen()){markNewsSeen();setTimeout(showGuide,600);}else setTimeout(showNews,900);
     syncPush();
     const q=new URLSearchParams(location.search).get("room");
     if(q){try{history.replaceState(null,"",location.pathname);}catch(e){}go("chat",{name:"room",code:q});}
