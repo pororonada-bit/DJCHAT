@@ -280,7 +280,6 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--accent)}
 .msgs{flex:1;overflow-y:auto;padding:14px 12px;background:var(--bg);display:flex;flex-direction:column;gap:3px}
 .day{align-self:center;font-size:12px;color:var(--muted);background:var(--surface);border-radius:999px;padding:2px 10px;margin:10px 0}
 .who{font-size:13px;color:var(--muted);margin:8px 0 2px 2px}
-.profile-name{border:0;background:transparent;color:inherit;padding:0;font:inherit;cursor:pointer;text-decoration:underline;text-decoration-color:color-mix(in srgb,var(--muted) 45%,transparent);text-underline-offset:3px}.profile-name:hover{color:var(--accent)}
 .line{display:flex;align-items:flex-end;gap:6px;max-width:82%}
 .line.me{align-self:flex-end;flex-direction:row-reverse}
 .bubble{padding:7px 12px;border-radius:16px;background:var(--theirs);white-space:pre-wrap;word-break:break-word;border-top-left-radius:6px}
@@ -295,7 +294,7 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--accent)}
 .friends{list-style:none;margin:0;padding:0}
 .friends li{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
 .friends li:last-child{border-bottom:0}
-.av{width:42px;height:42px;border-radius:50%;flex:none;background:var(--chip);color:var(--accent);display:grid;place-items:center;font-weight:700;overflow:hidden}.av img{width:100%;height:100%;object-fit:cover}.friend-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}.friend-info .fn{flex:none}.friend-bio{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.av{width:34px;height:34px;border-radius:50%;flex:none;background:var(--chip);color:var(--accent);display:grid;place-items:center;font-weight:700}
 .fn{flex:1;min-width:0;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 .toasts{position:fixed;left:0;right:0;bottom:0;padding:0 16px calc(16px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none;z-index:20}
@@ -424,6 +423,22 @@ button.rd:hover{text-decoration-color:currentColor}
 .post-rx .rc{font-size:14px;padding:3px 11px}
 .post-rx .rc.add{color:var(--muted);border-style:dashed}
 .post-rx .reactpick{width:100%;max-width:380px;margin:8px 0 0;max-height:min(260px,40dvh)}
+/* 프로필 */
+.av{overflow:hidden}
+.av img{width:100%;height:100%;object-fit:cover;display:block}
+.av.sm{width:22px;height:22px;font-size:11px}
+.av.xl{width:96px;height:96px;font-size:38px}
+.pf{cursor:pointer}
+.pf:hover{text-decoration:underline}
+.who{display:flex;align-items:center;gap:6px}
+.pcard{text-align:center}
+.pcard .pc-top{display:flex;justify-content:center;margin-bottom:10px}
+.pcard .pc-name{margin:0 0 6px;font-size:20px}
+.pcard .pc-bio{margin:0 0 12px;color:var(--ink);white-space:pre-wrap;word-break:break-word}
+.pcard .pc-bio.none{color:var(--muted)}
+.pcard .pc-code{display:flex;justify-content:center;align-items:center;gap:8px;margin-bottom:14px}
+.pcard .pc-act{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:4px}
+.pf-row{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:12px}
 </style>
 </head>
 <body>
@@ -469,7 +484,7 @@ const debounce=(fn,ms=200)=>{let t;return(...a)=>{clearTimeout(t);t=setTimeout((
 const S={uid:null,me:null,tab:"board",view:{name:"list"},
   posts:[],postsLoaded:false,seenPosts:null,
   rooms:{},dmOther:{},roomsLoaded:false,roomsFirst:true,lr:{},
-  friends:[],incoming:[],seenIncoming:null,names:{},profiles:{},
+  friends:[],incoming:[],seenIncoming:null,names:{},
   cur:{channels:[]},gch:null,sound:true,started:false};
 try{S.sound=localStorage.getItem("sound")!=="off"}catch(e){}
 
@@ -492,8 +507,6 @@ function handleErr(e){
   else if(/BANNED/.test(m))toast("관리자에 의해 활동이 제한된 계정이에요.");
   else if(/SPAM_LIMIT/.test(m))toast("같은 말을 너무 많이 보냈어요. 잠시 후에 다시 보내 주세요.");
   else if(/NOT_ADMIN/.test(m))toast("관리자만 할 수 있어요.");
-  else if(/ANON_PROFILE/.test(m))toast("익명 계정은 프로필을 수정할 수 없어요.");
-  else if(/BAD_AVATAR/.test(m))toast("내 프로필 사진 폴더에 저장된 사진만 사용할 수 있어요.");
   else if(/CANNOT_BAN_ADMIN/.test(m))toast("관리자는 차단할 수 없어요.");
   else if(/admin_pin_post|column .*pinned/.test(m))toast("공지글 설정이 필요해요. add-pinned-posts.sql을 실행해 주세요.");
   else if(/site_notice/.test(m))toast("사이트 공지 설정이 필요해요. add-site-notice.sql을 실행해 주세요.");
@@ -508,6 +521,9 @@ function handleErr(e){
   else if(/emoticons|sticker_url|sticker_check/i.test(m))toast("이모티콘 설정이 필요해요. add-emoticons.sql을 실행해 주세요.");
   else if(m==="NOT_IMAGE")toast("이 파일은 사진으로 올릴 수 없어요.");
   else if(m==="TOO_BIG"||/exceeded the maximum|too large/i.test(m))toast("사진이 너무 커요. 5MB 이하로 올려 주세요.");
+  else if(/ANON_PROFILE/.test(m))toast("가입한 계정만 프로필을 꾸밀 수 있어요.");
+  else if(/BAD_AVATAR/.test(m))toast("사진을 저장하지 못했어요. 다시 올려 주세요.");
+  else if(/avatar_url|profiles_bio|column .*bio|admin_clear_profile/i.test(m))toast("프로필 설정이 필요해요. add-profiles.sql을 실행해 주세요.");
   else if(/mentions/i.test(m))toast("멘션 설정이 필요해요. add-mentions.sql을 실행해 주세요.");
   else if(/post_reactions/i.test(m))toast("게시판 반응 설정이 필요해요. add-post-reactions.sql을 실행해 주세요.");
   else if(/reply_to|message_reactions/i.test(m))toast("답장·반응 설정이 필요해요. add-reply-reactions.sql을 실행해 주세요.");
@@ -904,35 +920,28 @@ async function syncPush(){
 
 /* 이름 표시 */
 const pendingNames=new Set();
-S.badge=S.badge||{};
+S.badge=S.badge||{};S.avatar=S.avatar||{};S.bio=S.bio||{};S.code=S.code||{};
 function badgeEl(uid){return S.badge&&S.badge[uid]?h("span",{class:"admin-tag",title:"관리자"},"관리자"):null;}
-function nameSpan(uid){return h("span",{"data-uid":uid||""},S.names[uid]||"…",badgeEl(uid));}
-function chatProfileName(uid){
-  const b=h("button",{class:"profile-name","data-uid":uid||"",type:"button",title:"프로필 보기"},S.names[uid]||"…",badgeEl(uid));
-  b.addEventListener("click",e=>{e.stopPropagation();if(uid)location.href="profile.html?uid="+encodeURIComponent(uid);});
-  return b;
-}
-function avatarNode(uid){
-  const p=S.profiles[uid]||{};
-  const box=h("span",{class:"av"});
-  if(p.avatar_url){const img=h("img",{src:p.avatar_url,alt:(S.names[uid]||"친구")+" 프로필 사진",loading:"lazy"});img.addEventListener("error",()=>{box.replaceChildren((S.names[uid]||"?").slice(0,1));});box.append(img);}
-  else box.textContent=(S.names[uid]||"?").slice(0,1);
-  return box;
-}
+function nameSpan(uid,link){const p={"data-uid":uid||""};if(link){p.class="pf";p["data-pf"]=uid||"";}return h("span",p,S.names[uid]||"…",badgeEl(uid));}
+function avEl(uid,link,size){const p={class:"av"+(size?" "+size:"")+(link?" pf":""),"data-initial":uid||""};if(link)p["data-pf"]=uid||"";else p["aria-hidden"]="true";return h("span",p,"·");}
+document.addEventListener("click",e=>{const t=e.target.closest&&e.target.closest("[data-pf]");if(t&&t.dataset.pf)showProfile(t.dataset.pf);});
 function paintNames(){
   for(const e of document.querySelectorAll("[data-uid]")){const id=e.dataset.uid;if(id&&S.names[id])e.replaceChildren(S.names[id],...[badgeEl(id)].filter(Boolean));}
-  for(const e of document.querySelectorAll("[data-initial]")){const id=e.dataset.initial;if(S.names[id])e.textContent=S.names[id].slice(0,1);}
+  for(const e of document.querySelectorAll("[data-initial]")){
+    const id=e.dataset.initial;if(!S.names[id])continue;
+    const u=S.avatar[id];
+    if(u){if(e.dataset.av!==u){e.replaceChildren(h("img",{src:u,alt:"",loading:"lazy",draggable:"false"}));e.dataset.av=u;}}
+    else{delete e.dataset.av;e.textContent=S.names[id].slice(0,1);}
+  }
 }
 async function fetchProfiles(ids){
-  let res=await sb.from("profiles").select("id,name,code,bio,avatar_url").in("id",ids);
-  if(res.error)res=await sb.from("profiles").select("id,name,code").in("id",ids);
+  let res=await sb.from("profiles").select("id,name,admin_badge,code,bio,avatar_url").in("id",ids);
+  if(res.error)res=await sb.from("profiles").select("id,name,admin_badge,bio,avatar_url").in("id",ids);
+  if(res.error)res=await sb.from("profiles").select("id,name,admin_badge").in("id",ids);
   if(res.error)res=await sb.from("profiles").select("id,name").in("id",ids);
-  let badges=null;
-  try{const b=await sb.from("profiles").select("id,admin_badge").in("id",ids);if(!b.error)badges=b.data||[];}catch(e){}
-  const badgeMap=Object.fromEntries((badges||[]).map(x=>[x.id,!!x.admin_badge]));
   for(const p of res.data||[]){
-    S.names[p.id]=p.name;if(p.id in badgeMap)S.badge[p.id]=badgeMap[p.id];
-    S.profiles[p.id]={...(S.profiles[p.id]||{}),code:p.code||S.profiles[p.id]?.code||"",bio:p.bio||"",avatar_url:p.avatar_url||null};
+    S.names[p.id]=p.name;S.badge[p.id]=!!p.admin_badge;
+    S.avatar[p.id]=p.avatar_url||null;S.bio[p.id]=p.bio||null;if(p.code)S.code[p.id]=p.code;
   }
 }
 async function fillNames(){
@@ -1329,7 +1338,7 @@ function viewPost(main,id){
     if(pinBtn)pinBtn.addEventListener("click",async()=>{pinBtn.disabled=true;
       try{must(await sb.rpc("admin_pin_post",{p_post:id,p_pin:!post.pinned}));toast(post.pinned?"공지에서 내렸어요":"공지로 고정했어요");await loadPost();loadPosts();}
       catch(e){handleErr(e);pinBtn.disabled=false;}});
-    art.replaceChildren(post.pinned?h("span",{class:"pin-tag"},"📌 공지"):null,h("h1",{},post.title),h("div",{class:"pm"},nameSpan(post.author),h("span",{},fmt(post.created_at))),
+    art.replaceChildren(post.pinned?h("span",{class:"pin-tag"},"📌 공지"):null,h("h1",{},post.title),h("div",{class:"pm"},nameSpan(post.author,true),h("span",{},fmt(post.created_at))),
       h("div",{class:"body"},linkify(post.body||"")),
       post.images&&post.images.length?h("div",{class:"imgs"},post.images.map(u=>photoLink(u))):null,
       rxBox,h("div",{class:"post-actions"},likeBtn,pinBtn,del));
@@ -1342,7 +1351,7 @@ function viewPost(main,id){
       const cs=must(await sb.from("comments").select("*").eq("post_id",id).order("created_at",{ascending:true}).limit(500));
       cCount.textContent="댓글 "+cs.length;
       cList.replaceChildren(...cs.map(c=>h("li",{},
-        h("div",{class:"c-meta"},nameSpan(c.author),h("span",{},fmt(c.created_at)),
+        h("div",{class:"c-meta"},nameSpan(c.author,true),h("span",{},fmt(c.created_at)),
           (c.author===S.uid||S.admin)?h("button",{class:"link",onclick:async()=>{try{must(await sb.from("comments").delete().eq("id",c.id));loadComments();}catch(e){handleErr(e);}}},"삭제"):null),
         c.sticker_url?h("img",{class:"c-sticker",src:c.sticker_url,alt:"이모티콘",loading:"lazy"}):h("div",{class:"c-text"},linkify(c.text)))));
       fillNames();
@@ -1437,16 +1446,10 @@ function viewAdmin(main){
         try{must(await sb.rpc("admin_set_ban",{p_user:u.id,p_ban:!u.banned}));u.banned=!u.banned;toast(u.banned?u.name+"님을 차단했어요":u.name+"님 차단을 풀었어요");drawUsers();}
         catch(e){handleErr(e);btn.disabled=false;}
       });
-      const clearProfile=u.id===S.uid?null:twoStep(h("button",{class:"btn"},"프로필 정리"),"프로필 정리","한 번 더 누르면 소개와 사진을 지워요",async()=>{
-        try{must(await sb.rpc("admin_clear_profile",{p_user:u.id,p_avatar:true,p_bio:true}));
-          if(S.profiles[u.id])S.profiles[u.id]={...S.profiles[u.id],bio:"",avatar_url:null};
-          toast(u.name+"님의 소개와 사진을 지웠어요");if(S.tab==="friends")updateFriends();
-        }catch(e){handleErr(e);}
-      });
       return h("li",{},
         h("span",{class:"fn"},u.name,u.admin?h("span",{class:"admin-tag"},"관리자"):null,u.banned?h("span",{class:"banned-tag"},"차단됨"):null,
           h("span",{class:"sub"},"코드 "+u.code+" · "+new Date(u.created_at).toLocaleDateString("ko-KR")+" 가입")),
-        btn,clearProfile);
+        btn);
     }));
   };
   search.addEventListener("input",drawUsers);
@@ -1502,7 +1505,6 @@ function viewAdmin(main){
   loadUsers();loadAllRooms();
 }
 async function fillNamesFor(ids){const need=ids.filter(i=>!(i in S.names));if(!need.length)return;try{await fetchProfiles(need);}catch(e){}}
-async function fillProfilesFor(ids){const need=[...new Set(ids)].filter(i=>i&&!S.profiles[i]);if(!need.length)return;try{await fetchProfiles(need);}catch(e){}}
 
 function viewChatList(main){
   const codeIn=h("input",{type:"text",placeholder:"입장 코드 6자리",maxlength:"6",autocapitalize:"characters",style:"text-transform:uppercase;letter-spacing:.1em"});
@@ -1615,12 +1617,12 @@ function viewRoom(main,code){
       .sort((a,b)=>(nm(a).startsWith(k)?0:1)-(nm(b).startsWith(k)?0:1)).slice(0,20);
     if(!found.length){hideMention();return;}
     mentionBox.replaceChildren(...found.map(u=>{
-      const b=h("button",{type:"button",role:"option"},h("span",{class:"av","aria-hidden":"true"},S.names[u].slice(0,1)),h("span",{class:"fn"},S.names[u]));
+      const b=h("button",{type:"button",role:"option"},avEl(u),h("span",{class:"fn"},S.names[u]));
       b.addEventListener("pointerdown",ev=>ev.preventDefault());
       b.addEventListener("click",()=>pickMention(u));
       return h("li",{},b);
     }));
-    mentionBox.hidden=false;
+    mentionBox.hidden=false;paintNames();
   };
   input.addEventListener("input",updateMention);
   input.addEventListener("keyup",e=>{if(e.key.startsWith("Arrow"))updateMention();});
@@ -1757,7 +1759,7 @@ async function drawMembers(){
         try{must(await sb.rpc("room_kick",{p_room:c,p_user:uid}));toast("내보냈어요. 코드로도 다시 못 들어와요.");S.cur.members=S.cur.members.filter(x=>x!==uid);S.cur.memberCount=S.cur.members.length;updateRoomHead();drawMembers();}catch(e){handleErr(e);}
       }));
     }
-    ul.append(h("li",{},h("span",{class:"fn"},isOwner?h("span",{class:"crown",title:"방장"},"👑"):null,S.names[uid]||"…",badgeEl(uid),isMe?" (나)":""),btns));
+    ul.append(h("li",{},avEl(uid,true,"sm"),h("span",{class:"fn"},isOwner?h("span",{class:"crown",title:"방장"},"👑"):null,nameSpan(uid,true),isMe?" (나)":""),btns));
   }
   parts.push(ul);
   if(mgr){
@@ -1838,7 +1840,7 @@ function renderMsgs(){
     const day=new Date(m.created_at).toDateString();
     if(day!==prevDay){box.append(h("div",{class:"day"},dayLabel(m.created_at)));prevDay=day;prevBy="";}
     const me=m.author===S.uid;
-    if(!me&&m.author!==prevBy)box.append(h("div",{class:"who"},isOwnerOf(S.view.code,m.author)?h("span",{class:"crown",title:"방장"},"👑"):null,chatProfileName(m.author)));
+    if(!me&&m.author!==prevBy)box.append(h("div",{class:"who"},avEl(m.author,true,"sm"),isOwnerOf(S.view.code,m.author)?h("span",{class:"crown",title:"방장"},"👑"):null,nameSpan(m.author,true)));
     const onImg=()=>{if(stick)box.scrollTop=box.scrollHeight;};
     const sel=S.cur.sel===m.id;
     const pinged=!me&&Array.isArray(m.mentions)&&m.mentions.includes(S.uid);
@@ -1938,7 +1940,6 @@ async function loadFriends(){
     const inc=rows.filter(r=>r.friend_id===S.uid).map(r=>r.user_id);
     if(S.seenIncoming){const fresh=inc.find(i=>!S.seenIncoming.has(i)&&!S.friends.includes(i));if(fresh){beep();toast("새 친구 요청이 왔어요");sysNotify("다정챗","새 친구 요청이 왔어요");}}
     S.seenIncoming=new Set(inc);S.incoming=inc;
-    await fillProfilesFor([...S.friends,...inc]);
     updateFriends();updateBadges();
   }catch(e){console.warn(e);}
 }
@@ -2112,13 +2113,96 @@ function showGuide(){
   draw();
 }
 
+/* ---------- 프로필 ---------- */
+const loadImg=f=>new Promise((res,rej)=>{const u=URL.createObjectURL(f),i=new Image();i.onload=()=>{URL.revokeObjectURL(u);res(i);};i.onerror=()=>{URL.revokeObjectURL(u);rej(new Error("NOT_IMAGE"));};i.src=u;});
+async function avatarBlob(file){
+  if(!file.type.startsWith("image/"))throw new Error("NOT_IMAGE");
+  const img=await loadImg(file),w=img.naturalWidth,hh=img.naturalHeight,sq=Math.min(w,hh);
+  const c=document.createElement("canvas");c.width=c.height=256;
+  const x=c.getContext("2d");x.fillStyle="#fff";x.fillRect(0,0,256,256);
+  x.drawImage(img,(w-sq)/2,(hh-sq)/2,sq,sq,0,0,256,256);
+  return await new Promise((res,rej)=>c.toBlob(b=>b?res(b):rej(new Error("NOT_IMAGE")),"image/jpeg",0.85));
+}
+async function uploadAvatar(file){
+  const blob=await avatarBlob(file);
+  const path=S.uid+"/avatar-"+Date.now()+".jpg";
+  must(await sb.storage.from("photos").upload(path,blob,{contentType:"image/jpeg",cacheControl:"31536000"}));
+  return sb.storage.from("photos").getPublicUrl(path).data.publicUrl;
+}
+function dropOldAvatar(u){try{const p=u&&u.split("/photos/")[1];if(p)sb.storage.from("photos").remove([decodeURIComponent(p)]);}catch(e){}}
+async function showProfile(uid){
+  if(!uid||$(".guide-back"))return;
+  const back=h("div",{class:"guide-back",role:"dialog","aria-modal":"true","aria-label":"프로필"});
+  const onKey=e=>{if(e.key==="Escape")close();};
+  const close=()=>{back.remove();document.removeEventListener("keydown",onKey);};
+  back.append(h("div",{class:"guide pcard"},h("p",{class:"hint"},"불러오는 중…")));
+  back.addEventListener("click",e=>{if(e.target===back)close();});
+  document.addEventListener("keydown",onKey);document.body.append(back);
+  try{await fetchProfiles([uid]);}catch(e){}
+  if(!back.isConnected)return;
+  const me=uid===S.uid,bio=S.bio[uid],code=S.code[uid];
+  const act=[];
+  if(me)act.push(h("button",{class:"btn primary",onclick:()=>{close();go("settings");}},"프로필 편집"));
+  else if(S.friends.includes(uid))act.push(h("button",{class:"btn primary",onclick:()=>{close();openDM(uid);}},"1:1 채팅"));
+  else act.push(h("button",{class:"btn primary",onclick:async()=>{await addFriend(uid);close();}},"친구 추가"));
+  act.push(h("button",{class:"btn",onclick:close},"닫기"));
+  const mod=[];
+  if(S.admin&&!me){
+    const clear=async(a,b2)=>{try{must(await sb.rpc("admin_clear_profile",{p_user:uid,p_avatar:a,p_bio:b2}));await fetchProfiles([uid]);paintNames();toast("지웠어요");close();}catch(e){handleErr(e);}};
+    if(S.avatar[uid])mod.push(twoStep(h("button",{class:"btn danger"},"사진 지우기"),"사진 지우기","한 번 더 누르면 지워요",()=>clear(true,false)));
+    if(bio)mod.push(twoStep(h("button",{class:"btn danger"},"소개 지우기"),"소개 지우기","한 번 더 누르면 지워요",()=>clear(false,true)));
+  }
+  back.replaceChildren(h("div",{class:"guide pcard"},
+    h("div",{class:"pc-top"},avEl(uid,false,"xl")),
+    h("h2",{class:"pc-name"},nameSpan(uid)),
+    h("p",{class:"pc-bio"+(bio?"":" none")},bio||"한 줄 소개가 없어요."),
+    code?h("div",{class:"pc-code"},h("span",{class:"hint"},"친구 코드"),h("button",{class:"code",title:"복사",onclick:()=>copy(code)},code)):null,
+    h("div",{class:"pc-act"},act),
+    mod.length?h("div",{class:"pc-act",style:"margin-top:10px"},mod):null));
+  paintNames();
+}
+function profilePanel(){
+  const box=h("div",{class:"panel"},h("h2",{},"내 프로필"));
+  if(S.anon){box.append(h("p",{class:"hint",style:"margin:0"},"프로필 사진과 한 줄 소개는 가입한 계정만 정할 수 있어요. 지금은 닉네임으로 시작한 계정이에요."));return box;}
+  const av=avEl(S.uid,false,"xl");
+  const file=h("input",{type:"file",accept:"image/*",hidden:true});
+  const pick=h("button",{class:"btn"},"사진 바꾸기"),del=h("button",{class:"btn"},"사진 지우기");
+  const bio=h("input",{type:"text",maxlength:"60",placeholder:"한 줄 소개 (최대 60자)",value:S.bio[S.uid]||"","aria-label":"한 줄 소개"});
+  const save=h("button",{class:"btn primary"},"소개 저장");
+  const sync=()=>{del.hidden=!S.avatar[S.uid];paintNames();};
+  const setAvatar=async url=>{
+    const old=S.avatar[S.uid];
+    must(await sb.from("profiles").update({avatar_url:url}).eq("id",S.uid));
+    S.avatar[S.uid]=url;sync();if(old&&old!==url)dropOldAvatar(old);
+  };
+  pick.addEventListener("click",()=>file.click());
+  file.addEventListener("change",async()=>{
+    const f=file.files&&file.files[0];file.value="";if(!f)return;
+    pick.disabled=true;
+    try{await setAvatar(await uploadAvatar(f));toast("프로필 사진을 바꿨어요");}catch(e){handleErr(e);}
+    pick.disabled=false;
+  });
+  del.addEventListener("click",async()=>{del.disabled=true;try{await setAvatar(null);toast("사진을 지웠어요");}catch(e){handleErr(e);}del.disabled=false;});
+  const doSave=async()=>{
+    const t=bio.value.trim().slice(0,60);save.disabled=true;
+    try{must(await sb.from("profiles").update({bio:t||null}).eq("id",S.uid));S.bio[S.uid]=t||null;toast(t?"소개를 저장했어요":"소개를 지웠어요");}catch(e){handleErr(e);}
+    save.disabled=false;
+  };
+  save.addEventListener("click",doSave);
+  bio.addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.isComposing)doSave();});
+  box.append(h("div",{class:"pf-row"},av,h("div",{class:"row",style:"flex-wrap:wrap"},pick,del,file)),
+    h("div",{class:"row"},bio,save),
+    h("p",{class:"hint"},"사진은 정사각형으로 잘려서 작게 저장돼요. 닉네임, 소개, 사진, 친구 코드는 다정챗을 쓰는 모두가 볼 수 있어요."));
+  sync();
+  return box;
+}
+
 /* ---------- 새 소식 (업데이트 내역) : 새 내역은 NEWS 맨 위에 추가해요 ---------- */
 const NEWS=[
-  {id:"2026-11-03-profile",date:"11월 3일",title:"프로필 페이지가 추가됐어요",items:[
-    "프로필 페이지를 새로 만들었어요. 프로필 사진과 한 줄 소개를 확인할 수 있어요.",
-    "채팅방에서 친구 이름을 누르면 해당 친구의 프로필을 볼 수 있어요.",
-    "프로필에 친구 코드가 표시돼요. 복사 버튼으로 코드를 간편하게 복사할 수 있어요.",
-    "내 프로필과 친구 프로필을 구분해 다른 사람의 정보는 수정할 수 없도록 했어요."]},
+  {id:"2026-11-03c",date:"11월 3일",title:"프로필을 꾸며요",items:[
+    "가입한 계정은 설정에서 프로필 사진과 한 줄 소개를 정할 수 있어요.",
+    "채팅, 글, 친구 목록에서 이름이나 사진을 누르면 프로필 카드가 떠요. 친구 코드도 카드에서 볼 수 있고, 친구 추가도 바로 돼요.",
+    "닉네임으로 시작한 계정은 프로필을 꾸밀 수 없어요."]},
   {id:"2026-11-03b",date:"11월 3일",title:"도배 방지",items:[
     "같은 말을 10분 안에 5번 이어서 보내려 하면 5번째부터는 보낼 수 없어요. 채팅과 댓글 모두 적용돼요. 중간에 다른 사람이 말하면 다시 처음부터 세요."]},
   {id:"2026-11-03",date:"11월 3일",title:"게시판에도 반응을 남겨요",items:[
@@ -2255,50 +2339,6 @@ function viewSettings(main){
   };
   drawMuted();
 
-  // 프로필 소개와 사진 (익명 계정은 SQL 가드 정책에 따라 수정 불가)
-  const bioInput=h("textarea",{maxlength:"60",rows:"2",placeholder:"한 줄 소개를 입력해 주세요 (최대 60자)"});
-  bioInput.value=S.me.bio||"";
-  const bioCount=h("span",{class:"hint"},bioInput.value.length+"/60");
-  bioInput.addEventListener("input",()=>{bioCount.textContent=bioInput.value.length+"/60";});
-  const bioSave=h("button",{class:"btn primary"},"소개 저장");
-  bioSave.addEventListener("click",async()=>{
-    if(S.anon){toast("익명 계정은 프로필을 수정할 수 없어요");return;}
-    const value=bioInput.value.trim().slice(0,60);bioSave.disabled=true;
-    try{must(await sb.from("profiles").update({bio:value||null}).eq("id",S.uid));S.me.bio=value;S.profiles[S.uid]={...(S.profiles[S.uid]||{}),bio:value};toast("소개를 저장했어요");}
-    catch(e){handleErr(e);}bioSave.disabled=false;
-  });
-  const avatarInput=h("input",{type:"file",accept:"image/jpeg,image/png,image/webp,image/gif",style:"display:none"});
-  const avatarPick=h("button",{class:"btn"},"사진 선택");
-  const avatarClear=h("button",{class:"btn"},"사진 삭제");
-  const avatarPreview=h("div",{class:"row",style:"align-items:center;gap:12px"},avatarNode(S.uid),h("span",{class:"hint"},"JPG, PNG, WEBP, GIF · 5MB 이하"));
-  avatarPick.addEventListener("click",()=>{if(!S.anon)avatarInput.click();else toast("익명 계정은 프로필을 수정할 수 없어요");});
-  avatarInput.addEventListener("change",async()=>{
-    const file=avatarInput.files&&avatarInput.files[0];if(!file)return;
-    if(S.anon){toast("익명 계정은 프로필을 수정할 수 없어요");avatarInput.value="";return;}
-    if(!/^image\/(jpeg|png|webp|gif)$/.test(file.type)){toast("JPG, PNG, WEBP, GIF 사진만 올릴 수 있어요");avatarInput.value="";return;}
-    if(file.size>5*1024*1024){toast("사진은 5MB 이하만 올릴 수 있어요");avatarInput.value="";return;}
-    avatarPick.disabled=true;
-    try{
-      const ext=({"image/jpeg":"jpg","image/png":"png","image/webp":"webp","image/gif":"gif"})[file.type];
-      const path=S.uid+"/"+Date.now()+"-"+crypto.randomUUID()+"."+ext;
-      const uploaded=must(await sb.storage.from("photos").upload(path,file,{contentType:file.type,upsert:false}));
-      const pub=sb.storage.from("photos").getPublicUrl(uploaded.path).data.publicUrl;
-      must(await sb.from("profiles").update({avatar_url:pub}).eq("id",S.uid));
-      S.me.avatar_url=pub;S.profiles[S.uid]={...(S.profiles[S.uid]||{}),avatar_url:pub};
-      avatarPreview.replaceChildren(avatarNode(S.uid),h("span",{class:"hint"},"프로필 사진이 변경됐어요"));toast("프로필 사진을 바꿨어요");
-    }catch(e){handleErr(e);}avatarPick.disabled=false;avatarInput.value="";
-  });
-  avatarClear.addEventListener("click",async()=>{
-    if(S.anon){toast("익명 계정은 프로필을 수정할 수 없어요");return;}
-    avatarClear.disabled=true;
-    try{must(await sb.from("profiles").update({avatar_url:null}).eq("id",S.uid));S.me.avatar_url=null;S.profiles[S.uid]={...(S.profiles[S.uid]||{}),avatar_url:null};avatarPreview.replaceChildren(avatarNode(S.uid),h("span",{class:"hint"},"기본 프로필 사진을 사용해요"));toast("프로필 사진을 삭제했어요");}
-    catch(e){handleErr(e);}avatarClear.disabled=false;
-  });
-  const profilePanel=h("div",{class:"panel"},h("h2",{},"프로필"),avatarPreview,
-    h("div",{class:"row",style:"margin-top:10px;flex-wrap:wrap"},avatarPick,avatarClear),avatarInput,
-    h("div",{class:"stack",style:"margin-top:12px"},bioInput,h("div",{class:"row",style:"justify-content:space-between;align-items:center"},bioCount,bioSave)),
-    S.anon?h("p",{class:"hint"},"익명 계정은 소개와 프로필 사진을 변경할 수 없어요. 아이디 계정으로 가입하면 사용할 수 있어요."):null);
-
   const nick=h("input",{type:"text",value:S.me.name,maxlength:"20"});
   const nickBtn=h("button",{class:"btn"},"닉네임 변경");
   nickBtn.addEventListener("click",async()=>{
@@ -2349,28 +2389,25 @@ function viewSettings(main){
         try{const reg=await navigator.serviceWorker?.getRegistration();if(reg)await reg.update();}catch(e){}
         location.replace(location.pathname+"?v="+Date.now());
       }},"앱 새로 불러오기")),
-    profilePanel,
+    profilePanel(),
     h("div",{class:"panel"},h("h2",{},"내 정보"),h("div",{class:"row"},nick,nickBtn),
       h("div",{class:"row",style:"margin-top:10px;flex-wrap:wrap"},out)));
 }
 function updateFriends(){
   const rq=$("#reqs");
   if(rq)rq.replaceChildren(...pendingRequests().map(uid=>h("div",{class:"panel"},h("ul",{class:"friends"},h("li",{},
-    avatarNode(uid),
-    h("span",{class:"fn"},nameSpan(uid)," 님이 나를 친구로 추가했어요"),
+    avEl(uid,true),
+    h("span",{class:"fn"},nameSpan(uid,true)," 님이 나를 친구로 추가했어요"),
     h("button",{class:"btn primary",onclick:()=>addFriend(uid)},"나도 추가"),
     h("button",{class:"btn",onclick:()=>dismissRequest(uid)},"닫기"))))));
   const fl=$("#flist");if(!fl){fillNames();return;}
   $("#fcount").textContent="친구 "+S.friends.length;
   if(!S.friends.length){fl.replaceChildren(h("li",{class:"empty"},"아직 친구가 없어요. 친구 코드를 받아 추가해 보세요."));fillNames();return;}
-  fl.replaceChildren(...S.friends.map(fid=>{
-    const info=S.profiles[fid]||{};
-    return h("li",{},avatarNode(fid),
-    h("div",{class:"friend-info"},h("span",{class:"fn"},nameSpan(fid)),h("span",{class:"friend-bio"},info.bio||"소개가 없어요")),
+  fl.replaceChildren(...S.friends.map(fid=>h("li",{},
+    avEl(fid,true),h("span",{class:"fn"},nameSpan(fid,true)),
     h("button",{class:"btn",onclick:()=>openDM(fid)},"1:1 채팅"),
     twoStep(h("button",{class:"link"},"삭제"),"삭제","한 번 더",async()=>{
-      try{must(await sb.from("friends").delete().eq("user_id",S.uid).eq("friend_id",fid));loadFriends();}catch(e){handleErr(e);}}));
-  }));
+      try{must(await sb.from("friends").delete().eq("user_id",S.uid).eq("friend_id",fid));loadFriends();}catch(e){handleErr(e);}}))));
   fillNames();
 }
 
@@ -2396,9 +2433,6 @@ function subscribeGlobal(){
     .on("postgres_changes",{event:"UPDATE",schema:"public",table:"profiles"},p=>{
       const n=p.new;if(!n||!n.id)return;
       if(n.name)S.names[n.id]=n.name;if("admin_badge" in n)S.badge[n.id]=!!n.admin_badge;
-      if("bio" in n||"avatar_url" in n)S.profiles[n.id]={...(S.profiles[n.id]||{}),...( "bio" in n?{bio:n.bio||""}:{}),...( "avatar_url" in n?{avatar_url:n.avatar_url||null}:{})};
-      if(n.id===S.uid&&S.me){if("bio" in n)S.me.bio=n.bio||"";if("avatar_url" in n)S.me.avatar_url=n.avatar_url||null;}
-      if(n.id!==S.uid&&S.tab==="friends")updateFriends();
       paintNames();
     })
     .on("postgres_changes",{event:"*",schema:"public",table:"site_notice"},debounce(loadSiteNotice,300))
@@ -2415,9 +2449,13 @@ async function onSession(session){
   S.uid=session.user.id;S.anon=!!session.user.is_anonymous;S.started=true;
   try{
     let p=null;
-    for(let i=0;i<3&&!p;i++){const {data}=await sb.from("profiles").select("id,name,code,bio,avatar_url").eq("id",S.uid).maybeSingle();p=data;if(!p)await new Promise(r=>setTimeout(r,600));}
+    for(let i=0;i<3&&!p;i++){
+      let r=await sb.from("profiles").select("id,name,code,bio,avatar_url").eq("id",S.uid).maybeSingle();
+      if(r.error)r=await sb.from("profiles").select("id,name,code").eq("id",S.uid).maybeSingle();
+      p=r.data;if(!p)await new Promise(ok=>setTimeout(ok,600));
+    }
     if(!p){toast("프로필을 찾지 못했어요. 데이터베이스 설정(setup.sql)을 실행했는지 확인해 주세요.");S.started=false;await sb.auth.signOut();return;}
-    S.me={name:p.name,code:p.code,bio:p.bio||"",avatar_url:p.avatar_url||null};S.names[S.uid]=p.name;S.profiles[S.uid]={bio:S.me.bio,avatar_url:S.me.avatar_url};
+    S.me={name:p.name,code:p.code};S.names[S.uid]=p.name;S.avatar[S.uid]=p.avatar_url||null;S.bio[S.uid]=p.bio||null;S.code[S.uid]=p.code;
     S.isAdmin=false;try{const {data}=await sb.rpc("is_admin");S.isAdmin=data===true;}catch(e){}
     S.admin=S.isAdmin&&adminModeOn();
     if(S.isAdmin)syncAdminBadge();
