@@ -515,6 +515,7 @@ function handleErr(e){
   else if(/NOT_ROOM_OWNER/.test(m))toast("방장만 할 수 있어요.");
   else if(/ROOM_BANNED/.test(m))toast("이 방에서 내보내져서 들어갈 수 없어요.");
   else if(/CANNOT_KICK_OWNER/.test(m))toast("방장은 내보낼 수 없어요.");
+  else if(/CANNOT_KICK_ADMIN/.test(m))toast("관리자는 내보낼 수 없어요.");
   else if(/NOT_MEMBER/.test(m))toast("이 방에 있는 사람만 방장이 될 수 있어요.");
   else if(/room_set_notice|room_kick|room_set_owner|can_manage_room|comments_sticker|column .*sticker_url/i.test(m))toast("새 기능 설정이 필요해요. add-room-owner.sql을 실행해 주세요.");
   else if(m==="STICKER_BIG")toast("움직이는 이모티콘(GIF)은 2MB 이하만 올릴 수 있어요.");
@@ -1755,7 +1756,7 @@ async function drawMembers(){
       btns.push(twoStep(h("button",{class:"btn"},"방장 넘기기"),"방장 넘기기","한 번 더 누르면 넘기기",async()=>{
         try{must(await sb.rpc("room_set_owner",{p_room:c,p_user:uid}));toast((S.names[uid]||"그 사람")+"님이 방장이 됐어요");await loadRooms();drawMembers();}catch(e){handleErr(e);}
       }));
-      btns.push(twoStep(h("button",{class:"btn danger"},"내보내기"),"내보내기","한 번 더 누르면 내보내기",async()=>{
+      if(!(S.badge&&S.badge[uid]))btns.push(twoStep(h("button",{class:"btn danger"},"내보내기"),"내보내기","한 번 더 누르면 내보내기",async()=>{
         try{must(await sb.rpc("room_kick",{p_room:c,p_user:uid}));toast("내보냈어요. 코드로도 다시 못 들어와요.");S.cur.members=S.cur.members.filter(x=>x!==uid);S.cur.memberCount=S.cur.members.length;updateRoomHead();drawMembers();}catch(e){handleErr(e);}
       }));
     }
