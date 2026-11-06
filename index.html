@@ -479,6 +479,8 @@ function h(tag,props,...kids){
   }
   return el;
 }
+/* append/prepend/replaceChildren에 null이 들어가면 화면에 "null" 글자가 찍혀서, 빈 값은 걸러내요 */
+(function(){for(const k of["append","prepend","replaceChildren"]){const o=Element.prototype[k];Element.prototype[k]=function(...a){return o.apply(this,a.filter(x=>x!=null&&x!==false));};}})();
 const debounce=(fn,ms=200)=>{let t;return(...a)=>{clearTimeout(t);t=setTimeout(()=>fn(...a),ms);};};
 
 const S={uid:null,me:null,tab:"board",view:{name:"list"},
