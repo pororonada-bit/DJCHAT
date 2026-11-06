@@ -927,6 +927,8 @@ async function syncPush(){
 /* 이름 표시 */
 const pendingNames=new Set();
 S.badge=S.badge||{};S.avatar=S.avatar||{};S.bio=S.bio||{};S.code=S.code||{};
+const _chatTs=[];
+function chatTooFast(){const n=Date.now();while(_chatTs.length&&n-_chatTs[0]>10000)_chatTs.shift();if(_chatTs.length>=12){toast("메시지를 너무 빨리 보내고 있어요. 잠깐 쉬었다가 보내 주세요.");return true;}_chatTs.push(n);return false;}
 function badgeEl(uid){if(!(S.badge&&S.badge[uid]))return null;const sup=!!(S.supers&&S.supers[uid]);return h("span",{class:"admin-tag",title:sup?"창조자":"관리자"},sup?"창조자":"관리자");}
 function nameSpan(uid,link){const p={"data-uid":uid||""};if(link){p.class="pf";p["data-pf"]=uid||"";}return h("span",p,S.names[uid]||"…",badgeEl(uid));}
 function avEl(uid,link,size){const p={class:"av"+(size?" "+size:"")+(link?" pf":""),"data-initial":uid||""};if(link)p["data-pf"]=uid||"";else p["aria-hidden"]="true";return h("span",p,"·");}
@@ -1604,7 +1606,7 @@ function viewRoom(main,code){
   try{const d=localStorage.getItem(dkey);if(d){input.value=d;setTimeout(autoGrow,0);}}catch(e){}
   input.addEventListener("input",()=>{autoGrow();saveDraft();});
   const send=async()=>{
-    const t=input.value.trim().slice(0,2000);if(!t)return;input.value="";saveDraft();autoGrow();hideMention();
+    const t=input.value.trim().slice(0,2000);if(!t)return;if(chatTooFast())return;input.value="";saveDraft();autoGrow();hideMention();
     await fillNamesFor(S.cur.members||[]);const men=findMentions(t);
     try{const row=must(await sb.from("messages").insert({room_id:code,text:t,...(men.length?{mentions:men}:{}),...rpOf()}).select("*").single());addMsgs([row]);clearReply();}
     catch(e){handleErr(e);input.value=t;saveDraft();autoGrow();}
@@ -1664,6 +1666,7 @@ function viewRoom(main,code){
   });
   // 이모티콘
   const sendSticker=async e=>{
+    if(chatTooFast())return;
     try{const row=must(await sb.from("messages").insert({room_id:code,text:"(이모티콘)",sticker_url:e.image_url,...rpOf()}).select("*").single());addMsgs([row]);clearReply();}
     catch(err){handleErr(err);}
   };
@@ -2225,6 +2228,11 @@ function profilePanel(){
 
 /* ---------- 새 소식 (업데이트 내역) : 새 내역은 NEWS 맨 위에 추가해요 ---------- */
 const NEWS=[
+  {id:"2026-11-06",date:"11월 6일",title:"관리자 기능과 도배 방지",items:[
+    "채팅을 10초에 12개 넘게 보내려 하면 잠깐 쉬어 달라는 안내가 떠요. 글이나 댓글을 짧은 시간에 너무 많이 올리거나, 채팅을 20초에 100개 이상 보내면 자동으로 차단돼요. 차단은 관리자가 풀 수 있어요.",
+    "설정 → 내 정보에서 비밀번호를 바꿀 수 있어요. 잊었다면 관리자에게 말해 주세요. 관리자가 임시 비밀번호를 정해 줄 수 있고, 원래 비밀번호는 누구도 볼 수 없어요.",
+    "관리자는 차단되거나 방에서 내보내지지 않아요.",
+    "관리자 중 이름 옆에 '창조자'가 붙은 사람이 가장 높은 관리자예요. 로그인 아이디는 창조자만 볼 수 있어요."]},
   {id:"2026-11-03c",date:"11월 3일",title:"프로필을 꾸며요",items:[
     "가입한 계정은 설정에서 프로필 사진과 한 줄 소개를 정할 수 있어요.",
     "채팅, 글, 친구 목록에서 이름이나 사진을 누르면 프로필 카드가 떠요. 친구 코드도 카드에서 볼 수 있고, 친구 추가도 바로 돼요.",
@@ -2372,6 +2380,18 @@ function viewSettings(main){
     try{must(await sb.from("profiles").update({name:n}).eq("id",S.uid));S.me.name=n;S.names[S.uid]=n;toast("닉네임을 바꿨어요");}catch(e){handleErr(e);}
     nickBtn.disabled=false;
   });
+  const pw1=h("input",{type:"password",placeholder:"새 비밀번호 (6자 이상)",autocomplete:"new-password",maxlength:"72"});
+  const pw2=h("input",{type:"password",placeholder:"새 비밀번호 한 번 더",autocomplete:"new-password",maxlength:"72"});
+  const chgPwBtn=h("button",{class:"btn"},"비밀번호 변경");
+  chgPwBtn.addEventListener("click",async()=>{
+    const a=pw1.value,b=pw2.value;
+    if(a.length<6){toast("비밀번호는 6자 이상이어야 해요.");return;}
+    if(a!==b){toast("비밀번호 두 칸이 서로 달라요.");return;}
+    chgPwBtn.disabled=true;
+    try{const r=await sb.auth.updateUser({password:a});if(r.error)throw r.error;pw1.value="";pw2.value="";toast("비밀번호를 바꿨어요");}
+    catch(e){handleErr(e);}
+    chgPwBtn.disabled=false;
+  });
   const out=twoStep(h("button",{class:"btn danger"},"로그아웃"),"로그아웃",S.anon?"닉네임 계정은 로그아웃하면 다시 못 들어와요. 한 번 더 누르면 로그아웃":"한 번 더 누르면 로그아웃",async()=>{await dropServerSub();sb.auth.signOut();});
 
   const rdBtn=h("button",{class:"btn"});
@@ -2417,6 +2437,8 @@ function viewSettings(main){
       }},"앱 새로 불러오기")),
     profilePanel(),
     h("div",{class:"panel"},h("h2",{},"내 정보"),h("div",{class:"row"},nick,nickBtn),
+      S.anon?null:h("div",{style:"margin-top:10px"},h("div",{class:"row"},pw1),h("div",{class:"row",style:"margin-top:6px"},pw2,chgPwBtn),
+        h("p",{class:"hint",style:"margin:6px 0 0"},"관리자에게 임시 비밀번호를 받았다면 로그인한 뒤 여기서 내 비밀번호로 바꿔 주세요.")),
       h("div",{class:"row",style:"margin-top:10px;flex-wrap:wrap"},out)));
 }
 function updateFriends(){
