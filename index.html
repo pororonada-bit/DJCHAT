@@ -1477,7 +1477,7 @@ function viewAdmin(main){
   };
   search.addEventListener("input",drawUsers);
   const loadUsers=async()=>{try{users=must(await sb.rpc("admin_list_users"));
-    try{loginIds={};must(await sb.rpc("admin_list_login_ids")).forEach(x=>{loginIds[x.user_id]=x.login_id;});}catch(e){console.warn("login ids",e);toast("아이디를 못 불러왔어요: "+String((e&&e.message)||e).slice(0,120));}
+    try{loginIds={};if(S.isSuper)must(await sb.rpc("admin_list_login_ids")).forEach(x=>{loginIds[x.user_id]=x.login_id;});}catch(e){console.warn("login ids",e);toast("아이디를 못 불러왔어요: "+String((e&&e.message)||e).slice(0,120));}
     try{supers={};must(await sb.rpc("admin_list_supers")).forEach(x=>{supers[x.uid]=true;});}catch(e){console.warn("supers",e);}
     drawUsers();}catch(e){handleErr(e);ul.replaceChildren(h("li",{class:"empty"},"불러오지 못했어요"));}};
   const loadAllRooms=async()=>{
