@@ -508,6 +508,9 @@ function handleErr(e){
   else if(/SPAM_LIMIT/.test(m))toast("같은 말을 너무 많이 보냈어요. 잠시 후에 다시 보내 주세요.");
   else if(/NOT_ADMIN/.test(m))toast("관리자만 할 수 있어요.");
   else if(/CANNOT_BAN_ADMIN/.test(m))toast("관리자는 차단할 수 없어요.");
+  else if(/CANNOT_RESET_ADMIN/.test(m))toast("관리자의 비밀번호는 여기서 바꿀 수 없어요.");
+  else if(/WEAK_PASSWORD/.test(m))toast("비밀번호는 6자 이상이어야 해요.");
+  else if(/admin_reset_password|admin_list_login_ids/.test(m))toast("새 기능 설정이 필요해요. 안내받은 SQL을 실행해 주세요.");
   else if(/admin_pin_post|column .*pinned/.test(m))toast("공지글 설정이 필요해요. add-pinned-posts.sql을 실행해 주세요.");
   else if(/site_notice/.test(m))toast("사이트 공지 설정이 필요해요. add-site-notice.sql을 실행해 주세요.");
   else if(/ADMIN_ONLY_RENAME/.test(m))toast("방 이름은 관리자만 바꿀 수 있어요.");
@@ -1435,10 +1438,10 @@ function viewAdmin(main){
   const search=h("input",{type:"text",placeholder:"닉네임 또는 친구 코드로 찾기"});
   const ul=h("ul",{class:"ulist"},h("li",{class:"empty"},"불러오는 중…"));
   const rl=h("ul",{class:"ulist"},h("li",{class:"empty"},"불러오는 중…"));
-  let users=[];
+  let users=[],loginIds={};
   const drawUsers=()=>{
     const q=search.value.trim().toLowerCase();
-    const list=users.filter(u=>!q||(u.name||"").toLowerCase().includes(q)||(u.code||"").toLowerCase().includes(q));
+    const list=users.filter(u=>!q||(u.name||"").toLowerCase().includes(q)||(u.code||"").toLowerCase().includes(q)||(loginIds[u.id]||"").toLowerCase().includes(q));
     if(!list.length){ul.replaceChildren(h("li",{class:"empty"},"사람이 없어요"));return;}
     ul.replaceChildren(...list.map(u=>{
       const btn=u.admin?null:h("button",{class:u.banned?"btn":"btn danger"},u.banned?"차단 해제":"차단");
@@ -1447,14 +1450,26 @@ function viewAdmin(main){
         try{must(await sb.rpc("admin_set_ban",{p_user:u.id,p_ban:!u.banned}));u.banned=!u.banned;toast(u.banned?u.name+"님을 차단했어요":u.name+"님 차단을 풀었어요");drawUsers();}
         catch(e){handleErr(e);btn.disabled=false;}
       });
+      const pwBtn=u.admin?null:h("button",{class:"btn"},"비번 재설정");
+      if(pwBtn)pwBtn.addEventListener("click",async()=>{
+        const pw=prompt(u.name+"님의 임시 비밀번호를 입력해 주세요 (6자 이상).\n친구가 로그인한 뒤 직접 바꾸게 안내해 주세요.");
+        if(pw===null)return;
+        if(pw.length<6){toast("비밀번호는 6자 이상이어야 해요.");return;}
+        pwBtn.disabled=true;
+        try{must(await sb.rpc("admin_reset_password",{p_user:u.id,p_password:pw}));toast(u.name+"님의 비밀번호를 바꿨어요");}
+        catch(e){handleErr(e);}
+        pwBtn.disabled=false;
+      });
       return h("li",{},
         h("span",{class:"fn"},u.name,u.admin?h("span",{class:"admin-tag"},"관리자"):null,u.banned?h("span",{class:"banned-tag"},"차단됨"):null,
-          h("span",{class:"sub"},"코드 "+u.code+" · "+new Date(u.created_at).toLocaleDateString("ko-KR")+" 가입")),
-        btn);
+          h("span",{class:"sub"},(loginIds[u.id]?"아이디 "+loginIds[u.id]+" · ":"")+"코드 "+u.code+" · "+new Date(u.created_at).toLocaleDateString("ko-KR")+" 가입")),
+        h("div",{class:"row"},pwBtn,btn));
     }));
   };
   search.addEventListener("input",drawUsers);
-  const loadUsers=async()=>{try{users=must(await sb.rpc("admin_list_users"));drawUsers();}catch(e){handleErr(e);ul.replaceChildren(h("li",{class:"empty"},"불러오지 못했어요"));}};
+  const loadUsers=async()=>{try{users=must(await sb.rpc("admin_list_users"));
+    try{loginIds={};must(await sb.rpc("admin_list_login_ids")).forEach(x=>{loginIds[x.user_id]=x.login_id;});}catch(e){console.warn("login ids",e);}
+    drawUsers();}catch(e){handleErr(e);ul.replaceChildren(h("li",{class:"empty"},"불러오지 못했어요"));}};
   const loadAllRooms=async()=>{
     try{
       const rows=must(await sb.rpc("admin_list_rooms"));
