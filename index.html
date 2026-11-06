@@ -1450,7 +1450,7 @@ function viewAdmin(main){
         try{must(await sb.rpc("admin_set_ban",{p_user:u.id,p_ban:!u.banned}));u.banned=!u.banned;toast(u.banned?u.name+"님을 차단했어요":u.name+"님 차단을 풀었어요");drawUsers();}
         catch(e){handleErr(e);btn.disabled=false;}
       });
-      const pwBtn=u.admin?null:h("button",{class:"btn"},"비번 재설정");
+      const pwBtn=u.id===S.uid?null:h("button",{class:"btn"},"비번 재설정");
       if(pwBtn)pwBtn.addEventListener("click",async()=>{
         const pw=prompt(u.name+"님의 임시 비밀번호를 입력해 주세요 (6자 이상).\n친구가 로그인한 뒤 직접 바꾸게 안내해 주세요.");
         if(pw===null)return;
