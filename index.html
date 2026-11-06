@@ -509,8 +509,8 @@ function handleErr(e){
   else if(/NOT_ADMIN/.test(m))toast("관리자만 할 수 있어요.");
   else if(/CANNOT_BAN_ADMIN/.test(m))toast("관리자는 차단할 수 없어요.");
   else if(/CANNOT_RESET_ADMIN/.test(m))toast("관리자의 비밀번호는 여기서 바꿀 수 없어요.");
-  else if(/CANNOT_TOUCH_SUPER/.test(m))toast("총괄관리자는 건드릴 수 없어요.");
-  else if(/NOT_SUPER/.test(m))toast("총괄관리자만 할 수 있어요.");
+  else if(/CANNOT_TOUCH_SUPER/.test(m))toast("창조자는 건드릴 수 없어요.");
+  else if(/NOT_SUPER/.test(m))toast("창조자만 할 수 있어요.");
   else if(/WEAK_PASSWORD/.test(m))toast("비밀번호는 6자 이상이어야 해요.");
   else if(/admin_reset_password|admin_list_login_ids|admin_set_admin|admin_list_supers|is_super/.test(m))toast("새 기능 설정이 필요해요. 안내받은 SQL을 실행해 주세요.");
   else if(/admin_pin_post|column .*pinned/.test(m))toast("공지글 설정이 필요해요. add-pinned-posts.sql을 실행해 주세요.");
@@ -927,7 +927,7 @@ async function syncPush(){
 /* 이름 표시 */
 const pendingNames=new Set();
 S.badge=S.badge||{};S.avatar=S.avatar||{};S.bio=S.bio||{};S.code=S.code||{};
-function badgeEl(uid){if(!(S.badge&&S.badge[uid]))return null;const sup=!!(S.supers&&S.supers[uid]);return h("span",{class:"admin-tag",title:sup?"총괄관리자":"관리자"},sup?"총괄관리자":"관리자");}
+function badgeEl(uid){if(!(S.badge&&S.badge[uid]))return null;const sup=!!(S.supers&&S.supers[uid]);return h("span",{class:"admin-tag",title:sup?"창조자":"관리자"},sup?"창조자":"관리자");}
 function nameSpan(uid,link){const p={"data-uid":uid||""};if(link){p.class="pf";p["data-pf"]=uid||"";}return h("span",p,S.names[uid]||"…",badgeEl(uid));}
 function avEl(uid,link,size){const p={class:"av"+(size?" "+size:"")+(link?" pf":""),"data-initial":uid||""};if(link)p["data-pf"]=uid||"";else p["aria-hidden"]="true";return h("span",p,"·");}
 document.addEventListener("click",e=>{const t=e.target.closest&&e.target.closest("[data-pf]");if(t&&t.dataset.pf)showProfile(t.dataset.pf);});
@@ -1470,7 +1470,7 @@ function viewAdmin(main){
         pwBtn.disabled=false;
       });
       return h("li",{},
-        h("span",{class:"fn"},u.name,u.admin?h("span",{class:"admin-tag"},supers[u.id]?"총괄관리자":"관리자"):null,u.banned?h("span",{class:"banned-tag"},"차단됨"):null,
+        h("span",{class:"fn"},u.name,u.admin?h("span",{class:"admin-tag"},supers[u.id]?"창조자":"관리자"):null,u.banned?h("span",{class:"banned-tag"},"차단됨"):null,
           h("span",{class:"sub"},(loginIds[u.id]?"아이디 "+loginIds[u.id]+" · ":"")+"코드 "+u.code+" · "+new Date(u.created_at).toLocaleDateString("ko-KR")+" 가입")),
         h("div",{class:"row"},apBtn,pwBtn,btn));
     }));
