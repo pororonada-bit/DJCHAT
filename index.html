@@ -1202,6 +1202,10 @@ function viewBoard(main){
   };
   drawSorts();
   main.append(h("div",{class:"head"},h("h1",{text:"게시판"}),h("button",{class:"btn primary",onclick:()=>go("board",{name:"write"})},"글쓰기")),
+    h("button",{class:"panel",style:"display:flex;align-items:center;gap:8px;width:100%;text-align:left;cursor:pointer;margin:0 0 10px;padding:10px 14px;font:inherit;color:inherit",onclick:()=>showNews(true),"aria-label":"업데이트 내역 보기"},
+      h("span",{class:"pin-tag",style:"margin:0"},"업데이트"),
+      h("span",{style:"flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"},NEWS[0].date+" · "+NEWS[0].title),
+      h("span",{class:"hint",style:"margin:0;white-space:nowrap"},"전체 보기 ›")),
     bsearch,sorts,h("ul",{class:"posts",id:"postlist"}));
   updatePostList();
 }
